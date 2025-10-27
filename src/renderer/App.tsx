@@ -141,6 +141,7 @@ export default function App() {
   const previewRequestRef = useRef(0);
   const previewMetricsRef = useRef<{ start: number; profile: string } | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingPreviewProjectRef = useRef<NodeVisionProject | null>(null);
   const clearToastTimer = useCallback(() => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -713,16 +714,39 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (previewStatus === 'loading') {
+      pendingPreviewProjectRef.current = projectData;
+      return;
+    }
+    pendingPreviewProjectRef.current = null;
     const nextId = previewRequestRef.current + 1;
     previewRequestRef.current = nextId;
     void requestPreview(projectData, nextId);
-  }, [projectData, requestPreview]);
+  }, [projectData, previewStatus, requestPreview]);
+
+  useEffect(() => {
+    if (previewStatus === 'ready' || previewStatus === 'error') {
+      if (pendingPreviewProjectRef.current !== null) {
+        const nextProject = pendingPreviewProjectRef.current;
+        pendingPreviewProjectRef.current = null;
+        const nextId = previewRequestRef.current + 1;
+        previewRequestRef.current = nextId;
+        void requestPreview(nextProject, nextId);
+      } else {
+        pendingPreviewProjectRef.current = null;
+      }
+    }
+  }, [projectData, previewStatus, requestPreview]);
 
   const handleRefreshPreview = useCallback(() => {
+    if (previewStatus === 'loading') {
+      pendingPreviewProjectRef.current = projectData;
+      return;
+    }
     const nextId = previewRequestRef.current + 1;
     previewRequestRef.current = nextId;
     void requestPreview(projectData, nextId);
-  }, [projectData, requestPreview]);
+  }, [projectData, previewStatus, requestPreview]);
 
   const handleSaveToBackend = useCallback(async () => {
     if (!projectData) {
