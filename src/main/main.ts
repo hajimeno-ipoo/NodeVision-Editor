@@ -20,6 +20,31 @@ const RENDERER_DIST = join(DIST_ROOT, 'renderer');
 const RENDERER_ENTRY = join(RENDERER_DIST, 'index.html');
 const PRELOAD_SCRIPT = fileURLToPath(new URL('../../preload/index.cjs', import.meta.url));
 
+const DEFAULT_PREVIEW_FETCH_TIMEOUT_MS = 60_000;
+
+async function fetchWithTimeout(
+  input: Parameters<typeof fetch>[0],
+  init: (Parameters<typeof fetch>[1] & { timeoutMs?: number }) | undefined = undefined
+) {
+  const timeoutMs = init?.timeoutMs ?? DEFAULT_PREVIEW_FETCH_TIMEOUT_MS;
+  if (init?.signal) {
+    return fetch(input, init);
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://127.0.0.1:8000';
 const SAMPLE_PROJECT_PATH = fileURLToPath(new URL('../../samples/basic_project.nveproj', import.meta.url));
@@ -186,7 +211,7 @@ export async function initializeMainProcess(): Promise<void> {
       console.log(`[bench] シナリオ ${scenario.label} x${iterations}`);
       for (let i = 0; i < iterations; i += 1) {
         const start = performance.now();
-        const response = await fetch(new URL('/preview/generate', BACKEND_URL), {
+        const response = await fetchWithTimeout(new URL('/preview/generate', BACKEND_URL), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -393,7 +418,7 @@ export async function initializeMainProcess(): Promise<void> {
 
     const { project, forceProxy } = payload as { project?: unknown; forceProxy?: boolean };
     const projectData = assertProject(project);
-    const response = await fetch(new URL('/preview/generate', BACKEND_URL), {
+    const response = await fetchWithTimeout(new URL('/preview/generate', BACKEND_URL), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
