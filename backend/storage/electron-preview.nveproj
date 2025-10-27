@@ -10,7 +10,7 @@
     {
       "id": "n1",
       "type": "MediaInput",
-      "displayName": null,
+      "displayName": "",
       "params": {
         "path": "Assets/clip01.mp4"
       },
@@ -18,7 +18,7 @@
       "outputs": [
         "video"
       ],
-      "cachePolicy": null,
+      "cachePolicy": "auto",
       "position": {
         "x": 0.0,
         "y": 120.0
@@ -27,7 +27,7 @@
     {
       "id": "n2",
       "type": "ExposureAdjust",
-      "displayName": null,
+      "displayName": "",
       "params": {
         "exposure": 0.35
       },
@@ -37,7 +37,7 @@
       "outputs": [
         "video"
       ],
-      "cachePolicy": null,
+      "cachePolicy": "auto",
       "position": {
         "x": 300.0,
         "y": 40.0
@@ -46,7 +46,7 @@
     {
       "id": "n3",
       "type": "ContrastAdjust",
-      "displayName": null,
+      "displayName": "",
       "params": {
         "contrast": 1.12
       },
@@ -56,7 +56,7 @@
       "outputs": [
         "video"
       ],
-      "cachePolicy": null,
+      "cachePolicy": "auto",
       "position": {
         "x": 300.0,
         "y": 200.0
@@ -65,14 +65,14 @@
     {
       "id": "n4",
       "type": "PreviewDisplay",
-      "displayName": null,
+      "displayName": "",
       "params": {},
       "inputs": {
         "primary": "n2:video",
         "secondary": "n3:video"
       },
       "outputs": [],
-      "cachePolicy": null,
+      "cachePolicy": "auto",
       "position": {
         "x": 620.0,
         "y": 120.0
