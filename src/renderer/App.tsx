@@ -12,8 +12,23 @@ const AUTOSAVE_REASON_LABELS: Record<string, string> = {
   'auto-timer': '自動保存',
   'manual-retry': '手動で再保存',
   restore: '復旧処理',
-  imported: '外部取り込み'
+  imported: '外部取り込み',
+  'backend-slot': 'バックエンド復旧'
 };
+
+const DEFAULT_BACKEND_SLOT = 'electron-preview';
+const MAX_BACKEND_RECOVERY_RETRIES = 3;
+
+function sanitizeBackendSlot(value: string | null | undefined, fallback: string = DEFAULT_BACKEND_SLOT): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const base = trimmed.length > 0 ? trimmed : fallback;
+  let sanitized = base.replace(/[\\/]/g, '_');
+  while (sanitized.includes('..')) {
+    sanitized = sanitized.replace('..', '_');
+  }
+  sanitized = sanitized.replace(/[^A-Za-z0-9_.-]/g, '');
+  return sanitized.length > 0 ? sanitized : fallback;
+}
 
 function formatTimestamp(value?: string | null): string | null {
   if (!value) {
@@ -49,7 +64,9 @@ interface ProjectChangeMeta {
 }
 
 interface AutoSaveRecovery {
+  kind: 'local' | 'backend';
   path: string;
+  slot?: string | null;
   summary: NodeVisionProjectSummary;
   project: NodeVisionProject;
   savedAt?: string | null;
@@ -81,8 +98,17 @@ export default function App() {
   const [validationErrorMessage, setValidationErrorMessage] = useState<string | null>(null);
   const [fileSaveStatus, setFileSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [fileSaveError, setFileSaveError] = useState<string | null>(null);
-  const [backendSlot, setBackendSlot] = useState<string>('electron-preview');
+  const [backendSlot, setBackendSlot] = useState<string>(DEFAULT_BACKEND_SLOT);
   const [lastSavedSlot, setLastSavedSlot] = useState<string | null>(null);
+  const backendSlotRef = useRef<string>(DEFAULT_BACKEND_SLOT);
+  const [localAutoSaveChecked, setLocalAutoSaveChecked] = useState(false);
+  const [backendRecoveryStatus, setBackendRecoveryStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
+  const [backendRecoveryError, setBackendRecoveryError] = useState<string | null>(null);
+  const [backendRecoveryTrigger, setBackendRecoveryTrigger] = useState(0);
+  const [backendRecoveryAttemptCount, setBackendRecoveryAttemptCount] = useState(0);
+  const [backendRecoveryLastAttemptAt, setBackendRecoveryLastAttemptAt] = useState<string | null>(null);
+  const backendRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const backendRecoverySlotRef = useRef<string | null>(null);
   const [nodeEditorState, setNodeEditorState] = useState<NodeEditorState>({
     nodeId: null,
     displayName: '',
@@ -121,6 +147,59 @@ export default function App() {
       toastTimerRef.current = null;
     }
   }, []);
+  const sanitizedBackendSlot = useMemo(
+    () => sanitizeBackendSlot(backendSlot, DEFAULT_BACKEND_SLOT),
+    [backendSlot]
+  );
+  const backendSlotInputNormalized = useMemo(
+    () => (backendSlot.trim().length > 0 ? backendSlot.trim() : DEFAULT_BACKEND_SLOT),
+    [backendSlot]
+  );
+  const backendSlotWasSanitized = useMemo(
+    () => sanitizedBackendSlot !== backendSlotInputNormalized,
+    [backendSlotInputNormalized, sanitizedBackendSlot]
+  );
+  const backendRecoveryAttemptAtLabel = useMemo(
+    () => formatTimestamp(backendRecoveryLastAttemptAt),
+    [backendRecoveryLastAttemptAt]
+  );
+  const scheduleBackendRecovery = useCallback(
+    (options?: { resetAttempts?: boolean; delayMs?: number }) => {
+      if (backendRecoveryTimerRef.current) {
+        clearTimeout(backendRecoveryTimerRef.current);
+        backendRecoveryTimerRef.current = null;
+      }
+      if (options?.resetAttempts) {
+        setBackendRecoveryAttemptCount(0);
+      }
+      const delay = options?.delayMs ?? 0;
+      if (delay > 0) {
+        backendRecoveryTimerRef.current = setTimeout(() => {
+          setBackendRecoveryTrigger((value) => value + 1);
+          backendRecoveryTimerRef.current = null;
+        }, delay);
+      } else {
+        setBackendRecoveryTrigger((value) => value + 1);
+      }
+    },
+    []
+  );
+  useEffect(() => {
+    return () => {
+      if (backendRecoveryTimerRef.current) {
+        clearTimeout(backendRecoveryTimerRef.current);
+        backendRecoveryTimerRef.current = null;
+      }
+    };
+  }, []);
+  const sanitizedBackendSlot = useMemo(
+    () => sanitizeBackendSlot(backendSlot, DEFAULT_BACKEND_SLOT),
+    [backendSlot]
+  );
+  const backendSlotInputNormalized = useMemo(
+    () => (backendSlot.trim().length > 0 ? backendSlot.trim() : DEFAULT_BACKEND_SLOT),
+    [backendSlot]
+  );
   const showToast = useCallback(
     (message: string, tone: ToastTone = 'success') => {
       clearToastTimer();
@@ -268,16 +347,27 @@ export default function App() {
     }
   }, [applyProjectState]);
 
+  const fetchBackendProject = useCallback(async (slot: string) => {
+    const response = await window.nodevision?.project?.loadFromBackend?.({ slot });
+    if (!response) {
+      throw new Error('バックエンドからのレスポンスが空でした。');
+    }
+    return response;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let shouldScheduleBackend = false;
+
+    const loadRecoveryInfo = async () => {
       try {
         const info = await window.nodevision?.project?.getAutoSave?.();
-        if (cancelled || !info) {
+        if (cancelled) {
           return;
         }
-        if (info.exists && info.path && info.project && info.summary) {
+        if (info && info.exists && info.path && info.project && info.summary) {
           const recovery: AutoSaveRecovery = {
+            kind: 'local',
             path: info.path,
             project: info.project,
             summary: info.summary,
@@ -287,24 +377,153 @@ export default function App() {
           };
           setAutoSaveRecovery(recovery);
           setAutoSavePromptOpen(true);
+          setAutoSaveLoadError(null);
           setLastAutoSavePath(info.path ?? null);
           setLastAutoSaveAt(info.savedAt ?? null);
-        } else if (info && 'error' in info && typeof info.error === 'string') {
-          setAutoSaveLoadError(info.error);
-        } else if (info && 'exists' in info && !info.exists) {
-          setLastAutoSavePath(null);
-          setLastAutoSaveAt(null);
+        } else {
+          if (info && 'error' in info && typeof info.error === 'string') {
+            setAutoSaveLoadError(info.error);
+          } else {
+            setAutoSaveLoadError(null);
+          }
+          if (info && 'exists' in info && !info.exists) {
+            setLastAutoSavePath(null);
+            setLastAutoSaveAt(null);
+          }
+          shouldScheduleBackend = true;
         }
       } catch (err) {
         if (!cancelled) {
           setAutoSaveLoadError((err as Error).message);
         }
+        shouldScheduleBackend = true;
+      } finally {
+        if (!cancelled) {
+          setLocalAutoSaveChecked(true);
+          if (shouldScheduleBackend) {
+            setBackendRecoveryStatus('idle');
+            setBackendRecoveryError(null);
+            setBackendRecoveryAttemptCount(0);
+            setBackendRecoveryLastAttemptAt(null);
+            scheduleBackendRecovery({ resetAttempts: true });
+          }
+        }
       }
-    })();
+    };
+
+    void loadRecoveryInfo();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scheduleBackendRecovery]);
+
+  useEffect(() => {
+    if (!localAutoSaveChecked) {
+      return;
+    }
+    if (autoSaveRecovery && autoSaveRecovery.kind === 'local') {
+      return;
+    }
+    if (backendRecoveryTrigger === 0) {
+      return;
+    }
+    if (backendRecoveryStatus === 'pending') {
+      if (backendRecoverySlotRef.current && backendRecoverySlotRef.current !== sanitizedBackendSlot) {
+        scheduleBackendRecovery({ delayMs: 250 });
+      }
+      return;
+    }
+
+    const targetSlot = sanitizedBackendSlot;
+    const hasBackendRecovery =
+      autoSaveRecovery &&
+      autoSaveRecovery.kind === 'backend' &&
+      sanitizeBackendSlot(autoSaveRecovery.slot ?? targetSlot, DEFAULT_BACKEND_SLOT) === targetSlot;
+    if (hasBackendRecovery) {
+      return;
+    }
+
+    let cancelled = false;
+    setBackendRecoveryStatus('pending');
+    setBackendRecoveryError(null);
+    setAutoSaveLoadError(null);
+    backendRecoverySlotRef.current = targetSlot;
+    const attemptTimestamp = new Date().toISOString();
+    setBackendRecoveryLastAttemptAt(attemptTimestamp);
+
+    const run = async () => {
+      try {
+        const response = await fetchBackendProject(targetSlot);
+        if (cancelled) {
+          return;
+        }
+        const metadata = (response.project.metadata ?? {}) as Record<string, unknown>;
+        const autosaveEntry =
+          metadata && typeof metadata === 'object' && 'autosave' in metadata && metadata.autosave && typeof metadata.autosave === 'object'
+            ? (metadata.autosave as Record<string, unknown>)
+            : null;
+        const savedAt =
+          autosaveEntry && typeof autosaveEntry.savedAt === 'string' ? autosaveEntry.savedAt : null;
+        const reason =
+          autosaveEntry && typeof autosaveEntry.reason === 'string' ? autosaveEntry.reason : 'backend-slot';
+        const sourcePath =
+          autosaveEntry && typeof autosaveEntry.sourcePath === 'string' ? autosaveEntry.sourcePath : null;
+
+        const recovery: AutoSaveRecovery = {
+          kind: 'backend',
+          slot: response.slot ?? targetSlot,
+          path: response.path,
+          project: response.project,
+          summary: response.summary,
+          savedAt,
+          reason,
+          sourcePath
+        };
+        setAutoSaveRecovery(recovery);
+        setAutoSavePromptOpen(true);
+        setAutoSaveLoadError(null);
+        setLastAutoSavePath(response.path ?? null);
+        setLastAutoSaveAt(savedAt);
+        setBackendRecoveryStatus('success');
+        setBackendRecoveryError(null);
+        setBackendRecoveryAttemptCount(0);
+        backendSlotRef.current = response.slot ?? targetSlot;
+        setBackendSlot(response.slot ?? targetSlot);
+        backendRecoverySlotRef.current = response.slot ?? targetSlot;
+      } catch (err) {
+        if (cancelled) {
+          return;
+        }
+        const message = (err as Error).message ?? 'バックエンド復旧に失敗しました。';
+        setBackendRecoveryStatus('error');
+        setBackendRecoveryError(message);
+        setAutoSaveLoadError(`バックエンド復旧に失敗しました: ${message}`);
+        setBackendRecoveryAttemptCount((prev) => {
+          const next = prev + 1;
+          if (next < MAX_BACKEND_RECOVERY_RETRIES) {
+            const backoffMs = Math.min(30000, 5000 * next);
+            scheduleBackendRecovery({ delayMs: backoffMs });
+          }
+          return next;
+        });
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    autoSaveRecovery,
+    backendRecoveryStatus,
+    fetchBackendProject,
+    localAutoSaveChecked,
+    sanitizedBackendSlot,
+    backendRecoveryTrigger,
+    scheduleBackendRecovery
+  ]);
 
   const handleOpenProject = useCallback(async () => {
     setProjectError(null);
@@ -325,15 +544,38 @@ export default function App() {
   const handleLoadFromBackend = useCallback(async () => {
     setProjectError(null);
     try {
-      const normalizedSlot = backendSlot.trim() || 'electron-preview';
-      const response = await window.nodevision?.project?.loadFromBackend?.({ slot: normalizedSlot });
-      if (!response) {
-        return;
-      }
+      const normalizedSlot = sanitizedBackendSlot;
+      const response = await fetchBackendProject(normalizedSlot);
       applyProjectState(response.project, response.summary, response.path, { resetHistory: true });
+      const resolvedSlot = response.slot ?? normalizedSlot;
+      if (resolvedSlot !== backendSlot) {
+        backendSlotRef.current = resolvedSlot;
+        setBackendSlot(resolvedSlot);
+      }
+      const metadata = (response.project.metadata ?? {}) as Record<string, unknown>;
+      const autosaveEntry =
+        metadata && typeof metadata === 'object' && 'autosave' in metadata && metadata.autosave && typeof metadata.autosave === 'object'
+          ? (metadata.autosave as Record<string, unknown>)
+          : null;
+      const savedAt =
+        autosaveEntry && typeof autosaveEntry.savedAt === 'string' ? autosaveEntry.savedAt : null;
+      setAutoSaveRecovery(null);
+      setAutoSavePromptOpen(false);
+      setAutoSaveLoadError(null);
+      setLastAutoSavePath(response.path ?? null);
+      setLastAutoSaveAt(savedAt);
+      setLastSavedSlot(resolvedSlot);
+      setBackendRecoveryStatus('success');
+      setBackendRecoveryError(null);
+      setBackendRecoveryAttemptCount(0);
+      setBackendRecoveryLastAttemptAt(new Date().toISOString());
+      backendRecoverySlotRef.current = resolvedSlot;
     } catch (err) {
       const error = err as Error & { issues?: Array<{ path?: string; message?: string; type?: string }> };
       setProjectError(error.message);
+      setBackendRecoveryStatus('error');
+      setBackendRecoveryError(error.message);
+      setBackendRecoveryLastAttemptAt(new Date().toISOString());
       if (Array.isArray(error.issues)) {
         setProjectIssues(
           error.issues.map((issue) => ({
@@ -346,7 +588,7 @@ export default function App() {
         setValidationTimestamp(new Date().toISOString());
       }
     }
-  }, [applyProjectState, backendSlot]);
+  }, [applyProjectState, backendSlot, fetchBackendProject, sanitizedBackendSlot]);
 
   const handleValidateCurrent = useCallback(async () => {
     if (!projectData) {
@@ -398,9 +640,30 @@ export default function App() {
     }
   }, []);
 
-  const handleBackendSlotInputChange = useCallback((value: string) => {
-    setBackendSlot(value);
-  }, []);
+  const handleBackendSlotInputChange = useCallback(
+    (value: string) => {
+      backendSlotRef.current = value;
+      setBackendSlot(value);
+      setBackendRecoveryStatus('idle');
+      setBackendRecoveryError(null);
+      setBackendRecoveryLastAttemptAt(null);
+      setAutoSaveLoadError(null);
+      if (localAutoSaveChecked && (!autoSaveRecovery || autoSaveRecovery.kind !== 'local')) {
+        scheduleBackendRecovery({ resetAttempts: true, delayMs: 300 });
+      }
+    },
+    [autoSaveRecovery, localAutoSaveChecked, scheduleBackendRecovery]
+  );
+  const handleRetryBackendRecovery = useCallback(() => {
+    if (!localAutoSaveChecked) {
+      return;
+    }
+    setBackendRecoveryStatus('idle');
+    setBackendRecoveryError(null);
+    setBackendRecoveryLastAttemptAt(null);
+    setAutoSaveLoadError(null);
+    scheduleBackendRecovery({ resetAttempts: true });
+  }, [localAutoSaveChecked, scheduleBackendRecovery]);
 
   const requestPreview = useCallback(
     async (project: NodeVisionProject | null, requestId: number) => {
@@ -480,14 +743,23 @@ export default function App() {
     setSaveStatus('saving');
     setSaveErrorMessage(null);
     try {
-      const normalizedSlot = backendSlot.trim() || 'electron-preview';
+      const normalizedSlot = sanitizedBackendSlot;
       const response = await window.nodevision?.project?.saveToBackend?.(projectForSave, { slot: normalizedSlot });
       if (response) {
         setSaveStatus('saved');
         setSavePath(response.path);
         setProjectSummary(response.summary);
         setProjectPath(response.path);
+        if (normalizedSlot !== backendSlot) {
+          backendSlotRef.current = normalizedSlot;
+          setBackendSlot(normalizedSlot);
+        }
         setLastSavedSlot(normalizedSlot);
+        setBackendRecoveryStatus('success');
+        setBackendRecoveryError(null);
+        setBackendRecoveryAttemptCount(0);
+        setBackendRecoveryLastAttemptAt(new Date().toISOString());
+        backendRecoverySlotRef.current = normalizedSlot;
         hasPendingChangesRef.current = false;
         setAutoSaveStatus('idle');
         setAutoSaveError(null);
@@ -512,7 +784,7 @@ export default function App() {
       setSaveErrorMessage((err as Error).message);
       showToast(`バックエンド保存に失敗しました: ${(err as Error).message}`, 'error');
     }
-  }, [backendSlot, clearAutoSaveTimer, projectData, showToast]);
+  }, [backendSlot, clearAutoSaveTimer, projectData, sanitizedBackendSlot, showToast]);
 
   const handleSaveToFileAs = useCallback(async () => {
     if (!projectData) {
@@ -649,20 +921,44 @@ export default function App() {
     setAutoSaveRecovery(null);
     setAutoSaveLoadError(null);
     clearAutoSaveTimer();
-    try {
-      await window.nodevision?.project?.clearAutoSave?.();
-      setLastAutoSavePath(null);
-      setLastAutoSaveAt(null);
-    } catch (err) {
-      setAutoSaveLoadError((err as Error).message);
+    if (autoSaveRecovery.kind === 'local') {
+      try {
+        await window.nodevision?.project?.clearAutoSave?.();
+        setLastAutoSavePath(null);
+        setLastAutoSaveAt(null);
+      } catch (err) {
+        setAutoSaveLoadError((err as Error).message);
+      }
+    } else {
+      if (autoSaveRecovery.slot && autoSaveRecovery.slot !== backendSlot) {
+        backendSlotRef.current = autoSaveRecovery.slot;
+        setBackendSlot(autoSaveRecovery.slot);
+      }
+      setLastAutoSavePath(autoSaveRecovery.path ?? null);
+      setLastAutoSaveAt(autoSaveRecovery.savedAt ?? null);
+      setLastSavedSlot(autoSaveRecovery.slot ?? lastSavedSlot);
     }
-  }, [applyProjectState, autoSaveRecovery, clearAutoSaveTimer]);
+  }, [applyProjectState, autoSaveRecovery, backendSlot, clearAutoSaveTimer, lastSavedSlot]);
 
   const handleDiscardAutoSave = useCallback(async () => {
-    try {
-      await window.nodevision?.project?.clearAutoSave?.();
-    } catch (err) {
-      setAutoSaveLoadError((err as Error).message);
+    if (autoSaveRecovery?.kind === 'local') {
+      try {
+        await window.nodevision?.project?.clearAutoSave?.();
+      } catch (err) {
+        setAutoSaveLoadError((err as Error).message);
+      }
+      if (localAutoSaveChecked) {
+        scheduleBackendRecovery({ resetAttempts: true });
+      }
+    } else if (autoSaveRecovery?.kind === 'backend') {
+      setBackendRecoveryStatus('success');
+      setBackendRecoveryError(null);
+      setBackendRecoveryAttemptCount(0);
+      backendRecoverySlotRef.current = autoSaveRecovery.slot ?? sanitizedBackendSlot;
+      if (backendRecoveryTimerRef.current) {
+        clearTimeout(backendRecoveryTimerRef.current);
+        backendRecoveryTimerRef.current = null;
+      }
     }
     setAutoSaveRecovery(null);
     setAutoSaveLoadError(null);
@@ -670,7 +966,7 @@ export default function App() {
     setLastAutoSaveAt(null);
     setAutoSavePromptOpen(false);
     clearAutoSaveTimer();
-  }, [clearAutoSaveTimer]);
+  }, [autoSaveRecovery, clearAutoSaveTimer, localAutoSaveChecked, sanitizedBackendSlot, scheduleBackendRecovery]);
 
   const handleDismissAutoSavePrompt = useCallback(() => {
     setAutoSavePromptOpen(false);
@@ -1084,7 +1380,7 @@ export default function App() {
 
     const payload = {
       generatedAt: new Date().toISOString(),
-      slot: backendSlot.trim() || 'electron-preview',
+      slot: sanitizedBackendSlot,
       issues: projectIssues
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -1094,7 +1390,7 @@ export default function App() {
     anchor.download = `nodevision-validation-${Date.now()}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [backendSlot, projectIssues]);
+  }, [projectIssues, sanitizedBackendSlot]);
 
   const validationTimeLabel = useMemo(() => {
     if (!validationTimestamp) return null;
@@ -1240,6 +1536,12 @@ export default function App() {
             <p>前回の自動保存ファイルが見つかりました。復旧しますか？</p>
             <div className="autosave-recovery__summary">
               <span>保存先: {autoSaveRecovery.path}</span>
+              <span>
+                復旧元:{' '}
+                {autoSaveRecovery.kind === 'backend'
+                  ? `バックエンド${autoSaveRecovery.slot ? ` (スロット: ${autoSaveRecovery.slot})` : ''}`
+                  : 'ローカル自動保存'}
+              </span>
               {autoSaveRecoverySavedAtLabel ? <span>保存時刻: {autoSaveRecoverySavedAtLabel}</span> : null}
               <span>保存理由: {autoSaveRecoveryReasonLabel}</span>
               {autoSaveRecovery.sourcePath ? <span>元プロジェクト: {autoSaveRecovery.sourcePath}</span> : null}
@@ -1271,6 +1573,34 @@ export default function App() {
             />
           </label>
           <small>未入力の場合は `electron-preview` が使用されます。</small>
+          <small>
+            実際のスロット: <code>{sanitizedBackendSlot}</code>
+            {backendSlotWasSanitized ? '（入力値をサニタイズ済み）' : null}
+          </small>
+          {localAutoSaveChecked ? (
+            <div className="project-slot__status">
+              {backendRecoveryStatus === 'pending' ? (
+                <small>バックエンド復旧を確認しています…</small>
+              ) : backendRecoveryStatus === 'error' ? (
+                <small className="project-autosave-warning">
+                  バックエンド復旧に失敗しました: {backendRecoveryError ?? '原因不明'}
+                  {backendRecoveryAttemptCount >= MAX_BACKEND_RECOVERY_RETRIES ? '（自動再試行を停止しました）' : ''}
+                  <button
+                    type="button"
+                    onClick={handleRetryBackendRecovery}
+                    disabled={backendRecoveryStatus === 'pending'}
+                  >
+                    再試行
+                  </button>
+                </small>
+              ) : backendRecoveryStatus === 'success' ? (
+                <small>バックエンド復旧候補を取得済みです。</small>
+              ) : null}
+              {backendRecoveryAttemptAtLabel ? (
+                <small>最終試行: {backendRecoveryAttemptAtLabel}</small>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="project-actions">
           <button type="button" onClick={handleLoadSampleProject}>
@@ -1308,7 +1638,7 @@ export default function App() {
               <li>FPS: {projectSummary.fps}</li>
               <li>色空間: {projectSummary.colorSpace}</li>
               <li>スキーマ: {projectSummary.schemaVersion}</li>
-              <li>保存スロット: {backendSlot.trim() || 'electron-preview'}</li>
+              <li>保存スロット: {sanitizedBackendSlot}</li>
             </ul>
           ) : (
             <p>プロジェクト要約はまだありません。</p>
@@ -1387,9 +1717,9 @@ export default function App() {
             <p className="project-save-status">
               保存状態:{' '}
               {saveStatus === 'saving'
-                ? '保存中…'
-                : saveStatus === 'saved'
-                  ? `保存済み (${savePath}) [slot: ${lastSavedSlot ?? (backendSlot.trim() || 'electron-preview')}]`
+              ? '保存中…'
+              : saveStatus === 'saved'
+                  ? `保存済み (${savePath}) [slot: ${lastSavedSlot ?? sanitizedBackendSlot}]`
                   : 'エラー'}
             </p>
           ) : null}
@@ -1489,6 +1819,12 @@ function AutoSavePromptModal({
         <ul className="autosave-modal__summary">
           <li>
             保存先: <code>{recovery.path}</code>
+          </li>
+          <li>
+            復旧元:{' '}
+            {recovery.kind === 'backend'
+              ? `バックエンド${recovery.slot ? ` (スロット: ${recovery.slot})` : ''}`
+              : 'ローカル自動保存'}
           </li>
           {savedAtLabel ? <li>保存時刻: {savedAtLabel}</li> : null}
           <li>保存理由: {reasonLabel}</li>

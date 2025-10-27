@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+FASTAPI_AVAILABLE = True
+
+try:
+  from fastapi.testclient import TestClient
+  from backend.app.main import app, STORAGE_DIR
+except ModuleNotFoundError as error:
+  if error.name == "fastapi":
+    FASTAPI_AVAILABLE = False
+    TestClient = None  # type: ignore[assignment]
+    app = None  # type: ignore[assignment]
+    STORAGE_DIR = Path(".")
+  else:
+    raise
+
+
+PROJECT_SAMPLE = {
+  "schemaVersion": "1.0.0",
+  "mediaColorSpace": "Rec.709",
+  "projectFps": 30.0,
+  "projectResolution": {"width": 1920, "height": 1080},
+  "nodes": [],
+  "edges": [],
+  "assets": [],
+  "metadata": {}
+}
+
+
+class ProjectLoadEndpointTests(unittest.TestCase):
+
+  def setUp(self) -> None:
+    self.created_slots: list[str] = []
+    if FASTAPI_AVAILABLE:
+      self.client = TestClient(app)  # type: ignore[arg-type]
+
+  def tearDown(self) -> None:
+    if FASTAPI_AVAILABLE:
+      self.client.close()
+    for slot in self.created_slots:
+      target = STORAGE_DIR / f"{slot}.nveproj"
+      if target.exists():
+        target.unlink()
+
+  @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI dependency is not installed")
+  def test_round_trip_save_and_load_project(self) -> None:
+    save_response = self.client.post("/projects/save", json={"project": PROJECT_SAMPLE, "slot": "unit-test-slot"})
+    self.assertEqual(save_response.status_code, 200)
+    payload = save_response.json()
+    slot = payload["slot"]
+    self.created_slots.append(slot)
+
+    load_response = self.client.post("/projects/load", json={"slot": slot})
+    self.assertEqual(load_response.status_code, 200)
+    loaded = load_response.json()
+    self.assertEqual(loaded["slot"], slot)
+    self.assertEqual(loaded["summary"]["nodes"], 0)
+    self.assertEqual(loaded["summary"]["assets"], 0)
+    self.assertEqual(loaded["project"]["schemaVersion"], PROJECT_SAMPLE["schemaVersion"])
+
+  @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI dependency is not installed")
+  def test_slot_sanitization_strips_traversal_characters(self) -> None:
+    raw_slot = "../../dangerous/slot"
+    save_response = self.client.post("/projects/save", json={"project": PROJECT_SAMPLE, "slot": raw_slot})
+    self.assertEqual(save_response.status_code, 200)
+    sanitized_slot = save_response.json()["slot"]
+    self.created_slots.append(sanitized_slot)
+    self.assertNotIn("/", sanitized_slot)
+    self.assertNotIn("..", sanitized_slot)
+
+    load_response = self.client.post("/projects/load", json={"slot": raw_slot})
+    self.assertEqual(load_response.status_code, 200)
+    loaded = load_response.json()
+    self.assertEqual(loaded["slot"], sanitized_slot)
+    self.assertTrue(loaded["path"].endswith(f"{sanitized_slot}.nveproj"))
+
+
+if __name__ == "__main__":
+  unittest.main()

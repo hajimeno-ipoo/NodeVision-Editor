@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError, ConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_VERSION = "0.2.0"
+DEFAULT_PROJECT_SLOT = "latest"
 STORAGE_DIR = PROJECT_ROOT / "storage"
 BENCH_LOG_PATH = PROJECT_ROOT / "tmp" / "preview_bench.log"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -98,19 +99,21 @@ class ProjectPayload(BaseModel):
 
 class ProjectSaveRequest(BaseModel):
   project: ProjectPayload
-  slot: str | None = Field(default="latest")
+  slot: str | None = Field(default=DEFAULT_PROJECT_SLOT)
 
 
 class ProjectSaveResponse(BaseModel):
+  slot: str
   path: str
   summary: ProjectSummary
 
 
 class ProjectLoadRequest(BaseModel):
-  slot: str | None = Field(default="latest")
+  slot: str | None = Field(default=DEFAULT_PROJECT_SLOT)
 
 
 class ProjectLoadResponse(BaseModel):
+  slot: str
   path: str
   project: ProjectPayload
   summary: ProjectSummary
@@ -526,6 +529,17 @@ NODE_CATALOG: list[NodeCatalogItem] = [
 app = FastAPI(title="NodeVision Editor Backend Prototype", version=BACKEND_VERSION)
 
 
+def normalize_project_slot(raw_slot: str | None, default: str = DEFAULT_PROJECT_SLOT) -> str:
+  candidate = (raw_slot or default).strip()
+  if not candidate:
+    candidate = default
+  sanitized = candidate.replace("\\", "_").replace("/", "_")
+  while ".." in sanitized:
+    sanitized = sanitized.replace("..", "_")
+  filtered = "".join(ch for ch in sanitized if ch.isalnum() or ch in {"_", "-", "."})
+  return filtered or default
+
+
 @app.get("/health", response_model=HealthResponse, summary="サービス稼働確認")
 async def get_health() -> HealthResponse:
   return HealthResponse(status="ok", service="nodevision-backend", version=BACKEND_VERSION)
@@ -537,7 +551,7 @@ async def get_info() -> InfoResponse:
     name="NodeVision Editor Backend Prototype",
     description="Electron IPC 経由で疎通確認するための最小 API",
     backendVersion=BACKEND_VERSION,
-    endpoints=["/health", "/info", "/nodes/catalog", "/projects/save"],
+    endpoints=["/health", "/info", "/nodes/catalog", "/projects/save", "/projects/load"],
   )
 
 
@@ -548,10 +562,10 @@ async def get_node_catalog() -> list[NodeCatalogItem]:
 
 @app.post("/projects/save", response_model=ProjectSaveResponse, summary="プロジェクト保存")
 async def post_project_save(request: ProjectSaveRequest) -> ProjectSaveResponse:
-  slot = (request.slot or "latest").replace("/", "_")
+  slot = normalize_project_slot(request.slot, DEFAULT_PROJECT_SLOT)
   path = write_project(request.project, slot)
   summary = summarize_project(request.project)
-  return ProjectSaveResponse(path=str(path), summary=summary)
+  return ProjectSaveResponse(slot=slot, path=str(path), summary=summary)
 
 
 @app.post("/preview/generate", response_model=PreviewResponse, summary="プレビュー生成")
@@ -596,7 +610,7 @@ async def post_preview_generate(request: PreviewGenerateRequest) -> PreviewRespo
 
 @app.post("/projects/load", response_model=ProjectLoadResponse, summary="プロジェクト読み込み")
 async def post_project_load(request: ProjectLoadRequest) -> ProjectLoadResponse:
-  slot = (request.slot or "latest").replace("/", "_")
+  slot = normalize_project_slot(request.slot, DEFAULT_PROJECT_SLOT)
   try:
     project, path = read_project(slot)
   except FileNotFoundError as error:
@@ -621,7 +635,7 @@ async def post_project_load(request: ProjectLoadRequest) -> ProjectLoadResponse:
     ) from error
 
   summary = summarize_project(project)
-  return ProjectLoadResponse(path=str(path), project=project, summary=summary)
+  return ProjectLoadResponse(slot=slot, path=str(path), project=project, summary=summary)
 
 
 def summarize_project(project: ProjectPayload) -> ProjectSummary:
@@ -640,7 +654,7 @@ def write_project(project: ProjectPayload, slot: str) -> Path:
   with target.open("w", encoding="utf-8") as fh:
     json.dump(
       {
-        **project.dict(by_alias=True),
+        **project.model_dump(by_alias=True),
         "metadata": {**project.metadata, "savedBy": "backend"},
       },
       fh,
@@ -652,14 +666,15 @@ def write_project(project: ProjectPayload, slot: str) -> Path:
 
 
 def read_project(slot: str) -> tuple[ProjectPayload, Path]:
-  target = STORAGE_DIR / f"{slot}.nveproj"
+  normalized_slot = normalize_project_slot(slot, DEFAULT_PROJECT_SLOT)
+  target = STORAGE_DIR / f"{normalized_slot}.nveproj"
   if not target.exists():
-    raise FileNotFoundError(f"Project slot '{slot}' が見つかりません。")
+    raise FileNotFoundError(f"Project slot '{normalized_slot}' が見つかりません。")
 
   with target.open("r", encoding="utf-8") as fh:
     payload = json.load(fh)
 
-  project = ProjectPayload.parse_obj(payload)
+  project = ProjectPayload.model_validate(payload)
   return project, target
 
 

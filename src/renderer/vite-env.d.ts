@@ -29,6 +29,7 @@ declare global {
   }
 
   interface BackendSaveResponse {
+    slot: string;
     path: string;
     summary: NodeVisionProjectSummary;
   }
@@ -64,6 +65,7 @@ declare global {
   }
 
   interface BackendLoadResponse {
+    slot: string;
     path: string;
     project: NodeVisionProject;
     summary: NodeVisionProjectSummary;
