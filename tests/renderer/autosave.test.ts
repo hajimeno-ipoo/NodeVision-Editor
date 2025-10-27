@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { NodeVisionProject } from '../../src/shared/project-types';
-import { stripAutosaveMetadata } from '../../src/renderer/utils/autosave';
+import type { NodeVisionProject } from '../../src/shared/project-types.js';
+import { stripAutosaveMetadata } from '../../src/renderer/utils/autosave.js';
 
 describe('stripAutosaveMetadata', () => {
   const baseProject: NodeVisionProject = {

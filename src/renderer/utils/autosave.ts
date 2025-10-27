@@ -1,4 +1,4 @@
-import type { NodeVisionProject } from '../../shared/project-types';
+import type { NodeVisionProject } from '../../shared/project-types.js';
 
 export function cloneProject(project: NodeVisionProject): NodeVisionProject {
   return JSON.parse(JSON.stringify(project)) as NodeVisionProject;
