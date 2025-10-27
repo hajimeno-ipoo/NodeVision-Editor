@@ -192,14 +192,6 @@ export default function App() {
       }
     };
   }, []);
-  const sanitizedBackendSlot = useMemo(
-    () => sanitizeBackendSlot(backendSlot, DEFAULT_BACKEND_SLOT),
-    [backendSlot]
-  );
-  const backendSlotInputNormalized = useMemo(
-    () => (backendSlot.trim().length > 0 ? backendSlot.trim() : DEFAULT_BACKEND_SLOT),
-    [backendSlot]
-  );
   const showToast = useCallback(
     (message: string, tone: ToastTone = 'success') => {
       clearToastTimer();
