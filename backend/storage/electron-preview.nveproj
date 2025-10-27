@@ -83,22 +83,22 @@
     {
       "from": "n1:video",
       "to": "n2:video",
-      "disabled": null
+      "disabled": false
     },
     {
       "from": "n1:video",
       "to": "n3:video",
-      "disabled": null
+      "disabled": false
     },
     {
       "from": "n2:video",
       "to": "n4:primary",
-      "disabled": null
+      "disabled": false
     },
     {
       "from": "n3:video",
       "to": "n4:secondary",
-      "disabled": null
+      "disabled": false
     }
   ],
   "assets": [

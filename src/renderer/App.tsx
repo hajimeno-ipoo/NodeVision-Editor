@@ -142,6 +142,7 @@ export default function App() {
   const previewMetricsRef = useRef<{ start: number; profile: string } | null>(null);
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingPreviewProjectRef = useRef<NodeVisionProject | null>(null);
+  const isPreviewInFlightRef = useRef(false);
   const clearToastTimer = useCallback(() => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current);
@@ -660,15 +661,30 @@ export default function App() {
 
   const requestPreview = useCallback(
     async (project: NodeVisionProject | null, requestId: number) => {
+      isPreviewInFlightRef.current = true;
       if (!project) {
         setPreviewState(null);
         setPreviewStatus('idle');
         setPreviewError(null);
         previewMetricsRef.current = null;
+        isPreviewInFlightRef.current = false;
+        const nextProject = pendingPreviewProjectRef.current;
+        if (nextProject) {
+          pendingPreviewProjectRef.current = null;
+          const nextId = previewRequestRef.current + 1;
+          previewRequestRef.current = nextId;
+          void requestPreview(nextProject, nextId);
+        }
         return;
       }
 
       const start = performance.now();
+      console.debug('[preview] request:start', {
+        requestId,
+        currentRef: previewRequestRef.current,
+        inFlight: isPreviewInFlightRef.current,
+        projectHash: project ? JSON.stringify({ nodes: project.nodes.length, edges: project.edges.length }) : 'null'
+      });
       setPreviewStatus('loading');
       setPreviewError(null);
 
@@ -678,6 +694,10 @@ export default function App() {
             previewProxyMode === 'auto' ? undefined : previewProxyMode === 'on'
         });
         if (!response || requestId !== previewRequestRef.current) {
+          console.debug('[preview] request:stale', {
+            requestId,
+            currentRef: previewRequestRef.current
+          });
           return;
         }
         const proxyScale = typeof response.proxy.scale === 'number' ? response.proxy.scale : 1;
@@ -701,52 +721,92 @@ export default function App() {
           profile
         });
         setPreviewStatus('ready');
+        console.debug('[preview] request:success', {
+          requestId,
+          durationMs: performance.now() - start,
+          width: response.width,
+          height: response.height
+        });
       } catch (err) {
-        if (requestId !== previewRequestRef.current) {
-          return;
+        if (requestId === previewRequestRef.current) {
+          setPreviewStatus('error');
+          setPreviewError((err as Error).message);
+          previewMetricsRef.current = null;
+          console.warn('[preview] request:error', {
+            requestId,
+            message: (err as Error).message
+          });
         }
-        setPreviewStatus('error');
-        setPreviewError((err as Error).message);
-        previewMetricsRef.current = null;
+      } finally {
+        isPreviewInFlightRef.current = false;
+        const hasPending = pendingPreviewProjectRef.current !== null;
+        console.debug('[preview] request:complete', {
+          requestId,
+          hasPending
+        });
+        if (pendingPreviewProjectRef.current !== null) {
+          dispatchPendingPreview();
+        }
       }
     },
     [previewProxyMode]
   );
 
-  useEffect(() => {
-    if (previewStatus === 'loading') {
-      pendingPreviewProjectRef.current = projectData;
+  const hashProject = useCallback((project: NodeVisionProject | null) => {
+    if (!project) {
+      return 'null';
+    }
+    return JSON.stringify({
+      nodes: project.nodes?.map((node) => ({ id: node.id, type: node.type })) ?? [],
+      edges: project.edges?.map((edge) => ({ from: edge.from, to: edge.to })) ?? [],
+      fps: project.projectFps,
+      assets: project.assets?.map((asset) => asset.id) ?? []
+    });
+  }, []);
+
+  const lastRequestedProjectHashRef = useRef<string | null>(null);
+  const pendingProjectHashRef = useRef<string | null>(null);
+
+  const dispatchPendingPreview = useCallback(() => {
+    if (isPreviewInFlightRef.current) {
       return;
     }
+    if (pendingPreviewProjectRef.current === null) {
+      return;
+    }
+    const project = pendingPreviewProjectRef.current;
+    const hash = pendingProjectHashRef.current ?? hashProject(project);
     pendingPreviewProjectRef.current = null;
+    pendingProjectHashRef.current = null;
+    lastRequestedProjectHashRef.current = hash;
     const nextId = previewRequestRef.current + 1;
     previewRequestRef.current = nextId;
-    void requestPreview(projectData, nextId);
-  }, [projectData, previewStatus, requestPreview]);
+    void requestPreview(project, nextId);
+  }, [hashProject, requestPreview]);
+
+  const schedulePreview = useCallback(
+    (project: NodeVisionProject | null) => {
+      const hash = hashProject(project);
+      if (hash === lastRequestedProjectHashRef.current) {
+        return;
+      }
+      pendingPreviewProjectRef.current = project;
+      pendingProjectHashRef.current = hash;
+      if (isPreviewInFlightRef.current) {
+        return;
+      }
+      dispatchPendingPreview();
+    },
+    [dispatchPendingPreview, hashProject]
+  );
 
   useEffect(() => {
-    if (previewStatus === 'ready' || previewStatus === 'error') {
-      if (pendingPreviewProjectRef.current !== null) {
-        const nextProject = pendingPreviewProjectRef.current;
-        pendingPreviewProjectRef.current = null;
-        const nextId = previewRequestRef.current + 1;
-        previewRequestRef.current = nextId;
-        void requestPreview(nextProject, nextId);
-      } else {
-        pendingPreviewProjectRef.current = null;
-      }
-    }
-  }, [projectData, previewStatus, requestPreview]);
+    schedulePreview(projectData);
+  }, [projectData, schedulePreview]);
 
   const handleRefreshPreview = useCallback(() => {
-    if (previewStatus === 'loading') {
-      pendingPreviewProjectRef.current = projectData;
-      return;
-    }
-    const nextId = previewRequestRef.current + 1;
-    previewRequestRef.current = nextId;
-    void requestPreview(projectData, nextId);
-  }, [projectData, previewStatus, requestPreview]);
+    schedulePreview(projectData);
+  }, [projectData, schedulePreview]);
 
   const handleSaveToBackend = useCallback(async () => {
     if (!projectData) {
