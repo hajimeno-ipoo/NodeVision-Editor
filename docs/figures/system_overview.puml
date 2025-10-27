@@ -1,0 +1,33 @@
+@startuml
+title NodeVision Editor System Overview
+
+skinparam backgroundColor #f9f9f9
+skinparam packageStyle rectangle
+
+package "Electron アプリ" {
+  component "Main Process\n(Electron)" as Main
+  component "Renderer Process\n(React/TypeScript)" as Renderer
+}
+
+package "Python バックエンド" {
+  component "FastAPI サーバ" as FastAPI
+  component "ノード実行エンジン" as Engine
+  database "キャッシュ / プロキシ" as Cache
+}
+
+package "外部ツール" {
+  component "FFmpeg" as FFmpeg
+  component "GPU (WebGL/WebGPU)" as GPU
+}
+
+Main --> Renderer : IPC (contextBridge)
+Renderer --> FastAPI : WebSocket / REST
+FastAPI --> Engine : ノード実行
+Engine --> Cache : 中間データ保存
+Engine --> FFmpeg : 動画変換
+Renderer --> GPU : プレビュー描画
+
+actor "ユーザー" as User
+User --> Renderer : UI 操作
+
+@enduml

@@ -1,0 +1,42 @@
+{
+  "name": "nodevision-editor",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "bench:preview": "BENCH_LOG=tmp/preview_bench.log node scripts/benchmarks/preview_delay.js",
+    "bench:preview:full": "node scripts/benchmarks/run_preview_bench.mjs",
+    "bench:preview:history": "node scripts/benchmarks/summarize_history.mjs",
+    "bench:quality": "python3 scripts/benchmarks/quality_metrics.py --reference tests/media/reference.mp4 --test tmp/output.mp4",
+    "toast:preview": "node scripts/ui/generate_toast_preview.mjs",
+    "verify:security": "node scripts/verify-security-flags.mjs",
+    "build:lib": "tsc -p tsconfig.json",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:lib && npm run build:main && npm run build:renderer",
+    "start": "npm run build && node scripts/run-electron.mjs",
+    "dev:backend": "node scripts/run-backend.mjs",
+    "dev": "concurrently -k \"npm:dev:backend\" \"npm:start\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^2.1.1",
+    "reactflow": "^11.10.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.6",
+    "@types/react": "^18.3.7",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8",
+    "vitest": "^1.6.0"
+  }
+}

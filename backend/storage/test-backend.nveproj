@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0.0",
+  "mediaColorSpace": "Rec.709",
+  "projectFps": 30,
+  "projectResolution": {
+    "width": 1920,
+    "height": 1080
+  },
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "MediaInput",
+      "params": {
+        "path": "Assets/clip01.mp4"
+      },
+      "inputs": {},
+      "outputs": [
+        "video"
+      ],
+      "position": {
+        "x": 0,
+        "y": 120
+      }
+    },
+    {
+      "id": "n2",
+      "type": "ExposureAdjust",
+      "params": {
+        "exposure": 0.35
+      },
+      "inputs": {
+        "video": "n1:video"
+      },
+      "outputs": [
+        "video"
+      ],
+      "position": {
+        "x": 300,
+        "y": 40
+      }
+    },
+    {
+      "id": "n3",
+      "type": "ContrastAdjust",
+      "params": {
+        "contrast": 1.12
+      },
+      "inputs": {
+        "video": "n1:video"
+      },
+      "outputs": [
+        "video"
+      ],
+      "position": {
+        "x": 300,
+        "y": 200
+      }
+    },
+    {
+      "id": "n4",
+      "type": "PreviewDisplay",
+      "params": {},
+      "inputs": {
+        "primary": "n2:video",
+        "secondary": "n3:video"
+      },
+      "outputs": [],
+      "position": {
+        "x": 620,
+        "y": 120
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "n1:video",
+      "to": "n2:video"
+    },
+    {
+      "from": "n1:video",
+      "to": "n3:video"
+    },
+    {
+      "from": "n2:video",
+      "to": "n4:primary"
+    },
+    {
+      "from": "n3:video",
+      "to": "n4:secondary"
+    }
+  ],
+  "assets": [
+    {
+      "id": "asset-clip01",
+      "path": "Assets/clip01.mp4",
+      "hash": "sha256:ba8bb8f890f131d7a28bc0f4431afb873d5f8716cb717af5a22c727ce50f1f47",
+      "proxyPath": "Proxies/asset-clip01/clip01_1080p.mp4",
+      "colorSpace": "Rec.709",
+      "bitDepth": 10
+    }
+  ],
+  "metadata": {
+    "createdWith": "NodeVision Editor Prototype",
+    "createdAt": "2025-10-25T15:00:00Z",
+    "lastSavedAt": "2025-10-25T15:00:00Z",
+    "notes": "Sample project used for Renderer↔Main IPC demonstration.",
+    "previewProxy": {
+      "enabled": true,
+      "scale": 0.5
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extraMetadata": {
+    "mainWindow": {
+      "webPreferences": {
+        "nodeIntegration": false,
+        "contextIsolation": true
+      }
+    }
+  }
+}

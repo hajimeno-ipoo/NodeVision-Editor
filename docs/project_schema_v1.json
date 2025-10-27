@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nodevision.app/schema/project.schema.json",
+  "title": "NodeVision Project Schema",
+  "description": "Project file structure for NodeVision Editor (*.nveproj).",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "mediaColorSpace",
+    "projectFps",
+    "nodes",
+    "edges",
+    "assets",
+    "metadata"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the project schema."
+    },
+    "mediaColorSpace": {
+      "type": "string",
+      "enum": [
+        "sRGB",
+        "Rec.709",
+        "Rec.2020",
+        "DCI-P3",
+        "ACEScg"
+      ]
+    },
+    "projectFps": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 120
+    },
+    "projectResolution": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/edge" }
+    },
+    "assets": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/asset" }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "createdWith": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastSavedAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" },
+        "previewProxy": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "scale": { "type": "number", "minimum": 0.1, "maximum": 1 }
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "definitions": {
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "params", "inputs", "outputs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string" },
+        "params": {
+          "type": "object",
+          "description": "Parameter dictionary, validated per node type.",
+          "additionalProperties": true
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null", "object", "array"]
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "cachePolicy": {
+          "type": "string",
+          "enum": ["auto", "always", "never"],
+          "default": "auto"
+        },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "disabled": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "asset": {
+      "type": "object",
+      "required": ["id", "path", "hash"],
+      "properties": {
+        "id": { "type": "string" },
+        "path": { "type": "string" },
+        "hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "proxyPath": { "type": "string" },
+        "colorSpace": { "type": "string" },
+        "bitDepth": { "type": "integer", "enum": [8, 10, 12, 16] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

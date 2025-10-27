@@ -1,0 +1,17 @@
+# NodeVision Editor ignores
+
+# Temporary outputs (keep benchmarks locally unless archived)
+tmp/
+
+# Media samples (store locally or via LFS)
+tests/media/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Node modules (if later used)
+node_modules/
+
+# macOS artifacts
+.DS_Store
