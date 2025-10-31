@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
-import ReactFlow, {
+import {
+  ReactFlow as ReactFlowComponent,
   Background,
   Controls,
   MiniMap,
@@ -22,10 +23,8 @@ import {
   generateUniqueNodeId,
   type GraphEdge,
   type GraphEdgeData,
-  type GraphEdgeType,
   type GraphNode,
-  type GraphNodeData,
-  type GraphNodeType
+  type GraphNodeData
 } from '../utils/graph.js';
 
 type ProjectChangeMeta = {
@@ -539,7 +538,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
 
   return (
     <div className="graph-container" ref={containerRef}>
-      <ReactFlow<GraphNodeData, GraphEdgeData, GraphNodeType, GraphEdgeType>
+      <ReactFlowComponent
         className="graph-flow"
         nodes={nodes}
         edges={edges}
@@ -563,7 +562,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         <Background gap={18} color="#2a2d3a" />
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
-      </ReactFlow>
+      </ReactFlowComponent>
       {quickMenu.isOpen ? (
         <div
           ref={quickMenuRef}
