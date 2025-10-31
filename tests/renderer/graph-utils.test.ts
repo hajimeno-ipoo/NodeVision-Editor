@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import type { Edge as FlowEdge, Node as FlowNode } from 'reactflow';
-import { duplicateSelection, generateUniqueEdgeId, generateUniqueNodeId } from '../../src/renderer/utils/graph.js';
+import {
+  duplicateSelection,
+  generateUniqueEdgeId,
+  generateUniqueNodeId,
+  type GraphEdge,
+  type GraphNode,
+  type GraphNodeData
+} from '../../src/renderer/utils/graph.js';
 
-function createNode(id: string, overrides: Partial<FlowNode> = {}): FlowNode {
+function createNode(id: string, overrides: Partial<GraphNode> = {}): GraphNode {
   return {
     id,
     position: { x: 0, y: 0 },
-    data: {},
+    data: {} as GraphNodeData,
     ...overrides
   };
 }
 
-function createEdge(id: string, source: string, target: string, overrides: Partial<FlowEdge> = {}): FlowEdge {
+function createEdge(id: string, source: string, target: string, overrides: Partial<GraphEdge> = {}): GraphEdge {
   return {
     id,
     source,
@@ -42,20 +48,20 @@ describe('graph utils', () => {
   });
 
   it('duplicateSelection returns empty result when nothing selected', () => {
-    const nodes: FlowNode[] = [createNode('a'), createNode('b')];
-    const edges: FlowEdge[] = [createEdge('edge-a-b', 'a', 'b')];
+    const nodes: GraphNode[] = [createNode('a'), createNode('b')];
+    const edges: GraphEdge[] = [createEdge('edge-a-b', 'a', 'b')];
     const result = duplicateSelection(nodes, edges, []);
     expect(result.duplicatedNodes).toHaveLength(0);
     expect(result.duplicatedEdges).toHaveLength(0);
   });
 
   it('duplicates selected nodes and internal edges', () => {
-    const nodes: FlowNode[] = [
-      createNode('a', { position: { x: 10, y: 10 }, data: { label: 'Node A' } }),
-      createNode('b', { position: { x: 50, y: 50 }, data: { label: 'Node B' } }),
-      createNode('c', { position: { x: 90, y: 90 }, data: { label: 'Node C' } })
+    const nodes: GraphNode[] = [
+      createNode('a', { position: { x: 10, y: 10 }, data: { label: 'Node A' } as GraphNodeData }),
+      createNode('b', { position: { x: 50, y: 50 }, data: { label: 'Node B' } as GraphNodeData }),
+      createNode('c', { position: { x: 90, y: 90 }, data: { label: 'Node C' } as GraphNodeData })
     ];
-    const edges: FlowEdge[] = [
+    const edges: GraphEdge[] = [
       createEdge('edge-a-b', 'a', 'b'),
       createEdge('edge-b-c', 'b', 'c'),
       createEdge('edge-c-a', 'c', 'a')
@@ -76,29 +82,29 @@ describe('graph utils', () => {
   });
 
   it('skips edges that do not connect duplicated nodes', () => {
-    const nodes: FlowNode[] = [createNode('solo'), createNode('other')];
-    const edges: FlowEdge[] = [createEdge('edge', 'solo', 'other')];
+    const nodes: GraphNode[] = [createNode('solo'), createNode('other')];
+    const edges: GraphEdge[] = [createEdge('edge', 'solo', 'other')];
     const { duplicatedNodes, duplicatedEdges } = duplicateSelection(nodes, edges, ['solo']);
     expect(duplicatedNodes).toHaveLength(1);
     expect(duplicatedEdges).toHaveLength(0);
   });
 
   it('skips edges pointing to non-existent selections', () => {
-    const nodes: FlowNode[] = [];
-    const edges: FlowEdge[] = [createEdge('ghost', 'ghost', 'ghost')];
+    const nodes: GraphNode[] = [];
+    const edges: GraphEdge[] = [createEdge('ghost', 'ghost', 'ghost')];
     const { duplicatedNodes, duplicatedEdges } = duplicateSelection(nodes, edges, ['ghost']);
     expect(duplicatedNodes).toHaveLength(0);
     expect(duplicatedEdges).toHaveLength(0);
   });
 
   it('defaults duplicate positions when original coordinates missing', () => {
-    const nodes: FlowNode[] = [
+    const nodes: GraphNode[] = [
       createNode('floating', {
         // force undefined coordinates to exercise fallback branches
         position: { x: undefined as unknown as number, y: undefined as unknown as number }
       })
     ];
-    const edges: Edge[] = [];
+    const edges: GraphEdge[] = [];
     const { duplicatedNodes } = duplicateSelection(nodes, edges, ['floating']);
     expect(duplicatedNodes).toHaveLength(1);
     expect(duplicatedNodes[0].position).toEqual({ x: 36, y: 36 });

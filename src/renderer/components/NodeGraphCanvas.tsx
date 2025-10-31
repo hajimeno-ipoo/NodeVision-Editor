@@ -12,48 +12,60 @@ import ReactFlow, {
   useReactFlow,
   type Connection,
   type EdgeChange,
+  type EdgeTypes,
   type NodeChange,
-  type Edge as FlowEdge,
-  type Node as FlowNode
+  type NodeTypes
 } from 'reactflow';
 import type { NodeVisionProject } from '../../shared/project-types.js';
-import { duplicateSelection, generateUniqueNodeId } from '../utils/graph.js';
+import {
+  duplicateSelection,
+  generateUniqueNodeId,
+  type GraphEdge,
+  type GraphEdgeData,
+  type GraphEdgeType,
+  type GraphNode,
+  type GraphNodeData,
+  type GraphNodeType
+} from '../utils/graph.js';
 
 type ProjectChangeMeta = {
   pushHistory?: boolean;
 };
 
-const initialNodes: FlowNode[] = [
+const initialNodes: GraphNode[] = [
   {
     id: 'media-input',
     position: { x: 0, y: 80 },
-    data: { label: 'MediaInput\n(Assets/clip01.mp4)' },
+    data: { label: 'MediaInput\n(Assets/clip01.mp4)', displayName: 'MediaInput', nodeType: 'MediaInput' } satisfies GraphNodeData,
     type: 'input'
   },
   {
     id: 'exposure',
     position: { x: 240, y: 40 },
-    data: { label: 'ExposureAdjust\n(+0.35 EV)' }
+    data: { label: 'ExposureAdjust\n(+0.35 EV)', displayName: 'ExposureAdjust', nodeType: 'ExposureAdjust' } satisfies GraphNodeData
   },
   {
     id: 'contrast',
     position: { x: 240, y: 180 },
-    data: { label: 'Contrast\n(1.12)' }
+    data: { label: 'Contrast\n(1.12)', displayName: 'Contrast', nodeType: 'Contrast' } satisfies GraphNodeData
   },
   {
     id: 'preview',
     position: { x: 520, y: 120 },
-    data: { label: 'PreviewDisplay' },
+    data: { label: 'PreviewDisplay', displayName: 'PreviewDisplay', nodeType: 'PreviewDisplay' } satisfies GraphNodeData,
     type: 'output'
   }
 ];
 
-const initialEdges: FlowEdge[] = [
+const initialEdges: GraphEdge[] = [
   { id: 'media-to-exposure', source: 'media-input', target: 'exposure', animated: true },
   { id: 'media-to-contrast', source: 'media-input', target: 'contrast', animated: true, style: { strokeDasharray: '4 2' } },
   { id: 'merge-to-preview', source: 'exposure', target: 'preview', markerEnd: { type: MarkerType.ArrowClosed } },
   { id: 'contrast-to-preview', source: 'contrast', target: 'preview', markerEnd: { type: MarkerType.ArrowClosed } }
 ];
+
+const canvasNodeTypes: NodeTypes = {};
+const canvasEdgeTypes: EdgeTypes = {};
 
 type QuickMenuContext = 'canvas' | 'node';
 
@@ -72,10 +84,10 @@ interface NodeGraphCanvasProps {
 }
 
 export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }: NodeGraphCanvasProps) {
-  const [nodes, setNodes] = useNodesState<FlowNode>(initialNodes);
-  const [edges, setEdges] = useEdgesState<FlowEdge>(initialEdges);
-  const reactFlowInstance = useReactFlow<FlowNode, FlowEdge>();
-  const [selectedElements, setSelectedElements] = useState<{ nodes: FlowNode[]; edges: FlowEdge[] }>({ nodes: [], edges: [] });
+  const [nodes, setNodes] = useNodesState<GraphNodeData>(initialNodes);
+  const [edges, setEdges] = useEdgesState<GraphEdgeData>(initialEdges);
+  const reactFlowInstance = useReactFlow<GraphNodeData, GraphEdgeData>();
+  const [selectedElements, setSelectedElements] = useState<{ nodes: GraphNode[]; edges: GraphEdge[] }>({ nodes: [], edges: [] });
   const [quickMenu, setQuickMenu] = useState<QuickMenuState>({ isOpen: false, x: 0, y: 0, context: 'canvas' });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
@@ -83,7 +95,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   const projectSnapshot = useMemo(() => project, [project]);
 
   const syncProject = useCallback(
-    (nextNodes: FlowNode[], nextEdges: FlowEdge[], meta?: ProjectChangeMeta) => {
+    (nextNodes: GraphNode[], nextEdges: GraphEdge[], meta?: ProjectChangeMeta) => {
       if (!projectSnapshot || !onProjectChange) {
         return;
       }
@@ -117,11 +129,9 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           x: flowNode.position.x ?? 0,
           y: flowNode.position.y ?? 0
         };
+        const flowData: GraphNodeData = flowNode.data ?? {};
         if (base) {
-          const displayName =
-            typeof flowNode.data?.displayName === 'string' && flowNode.data.displayName.trim().length > 0
-              ? flowNode.data.displayName
-              : base.displayName;
+          const displayName = typeof flowData.displayName === 'string' && flowData.displayName.trim().length > 0 ? flowData.displayName : base.displayName;
           return {
             ...base,
             displayName,
@@ -136,15 +146,15 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         return {
           id: flowNode.id,
           type:
-            typeof flowNode.data?.nodeType === 'string'
-              ? flowNode.data.nodeType
-              : typeof flowNode.data?.label === 'string'
-                ? flowNode.data.label
+            typeof flowData.nodeType === 'string'
+              ? flowData.nodeType
+              : typeof flowData.label === 'string'
+                ? flowData.label
                 : flowNode.id,
-          displayName: typeof flowNode.data?.displayName === 'string' ? flowNode.data.displayName : undefined,
-          params: isRecord(flowNode.data?.params) ? flowNode.data?.params ?? {} : {},
+          displayName: typeof flowData.displayName === 'string' ? flowData.displayName : undefined,
+          params: isRecord(flowData.params) ? flowData.params ?? {} : {},
           inputs: inputsByNode.get(flowNode.id) ?? {},
-          outputs: Array.isArray(flowNode.data?.outputs) ? flowNode.data?.outputs : [],
+          outputs: Array.isArray(flowData.outputs) ? flowData.outputs : [],
           cachePolicy: undefined,
           position: nextPosition
         };
@@ -168,7 +178,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
       return;
     }
 
-    const derivedNodes: FlowNode[] = project.nodes.map((node, index): FlowNode => {
+    const derivedNodes: GraphNode[] = project.nodes.map((node, index): GraphNode => {
       const position = node.position ?? {
         x: 220 * (index % 4),
         y: 140 * Math.floor(index / 4)
@@ -181,13 +191,17 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           y: position.y ?? 0
         },
         data: {
-          label
-        },
+          label,
+          displayName: node.displayName ?? node.type,
+          nodeType: node.type,
+          params: isRecord(node.params) ? node.params : undefined,
+          outputs: Array.isArray(node.outputs) ? node.outputs : undefined
+        } satisfies GraphNodeData,
         type: node.inputs && Object.keys(node.inputs).length === 0 ? 'input' : node.outputs.length === 0 ? 'output' : undefined
-      } satisfies FlowNode;
+      } satisfies GraphNode;
     });
 
-    const derivedEdges: FlowEdge[] = project.edges.map((edge, idx): FlowEdge => {
+    const derivedEdges: GraphEdge[] = project.edges.map((edge, idx): GraphEdge => {
       const [fromNode] = edge.from.split(':');
       const [toNode] = edge.to.split(':');
       return {
@@ -199,7 +213,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         animated: !!edge.disabled,
         markerEnd: { type: MarkerType.ArrowClosed },
         style: edge.disabled ? { strokeDasharray: '4 2', opacity: 0.6 } : undefined
-      } satisfies FlowEdge;
+      } satisfies GraphEdge;
     });
 
     setNodes(derivedNodes);
@@ -247,7 +261,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   );
 
   const handleSelectionChange = useCallback(
-    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
       if (!onSelectionChange) {
         setSelectedElements({ nodes: selectedNodes, edges: selectedEdges });
         return;
@@ -397,7 +411,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   );
 
   const handleNodeContextMenu = useCallback(
-    (event: ReactMouseEvent, node: FlowNode) => {
+    (event: ReactMouseEvent, node: GraphNode) => {
       event.preventDefault();
       openQuickMenu(event.clientX, event.clientY, 'node', node.id);
     },
@@ -414,7 +428,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
       const usedIds = new Set(nodes.map((node) => node.id));
       const newId = generateUniqueNodeId('node', usedIds);
       const displayName = `Node ${newId}`;
-      const newNode: FlowNode = {
+      const newNode: GraphNode = {
         id: newId,
         position: {
           x: projected.x,
@@ -424,9 +438,9 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           label: displayName,
           displayName,
           nodeType: 'CustomNode'
-        },
+        } satisfies GraphNodeData,
         selected: true
-      } satisfies FlowNode;
+      } satisfies GraphNode;
 
       const nextNodes = [...nodes, newNode];
       setNodes(nextNodes);
@@ -445,11 +459,12 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         return;
       }
       const currentNode = nodes.find((node) => node.id === nodeId);
+      const currentData: GraphNodeData | undefined = currentNode?.data ?? undefined;
       const currentLabel =
-        typeof currentNode?.data?.displayName === 'string'
-          ? currentNode.data.displayName
-          : typeof currentNode?.data?.label === 'string'
-            ? currentNode.data.label
+        typeof currentData?.displayName === 'string'
+          ? currentData.displayName
+          : typeof currentData?.label === 'string'
+            ? currentData.label
             : '';
       const nextLabel = window.prompt('ノードのラベルを入力してください', currentLabel ?? '');
       if (nextLabel === null) {
@@ -460,22 +475,23 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         return;
       }
 
-      setNodes((currentNodes) => {
-        const nextNodes = currentNodes.map((node) =>
-          node.id === nodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  label: trimmed,
-                  displayName: trimmed
-                }
-              }
-            : node
-        );
-        syncProject(nextNodes, edges, { pushHistory: true });
-        return nextNodes;
+      const nextNodes = nodes.map((node) => {
+        if (node.id !== nodeId) {
+          return node;
+        }
+        const nextData: GraphNodeData = {
+          ...(node.data ?? {}),
+          label: trimmed,
+          displayName: trimmed
+        } as GraphNodeData;
+        return {
+          ...node,
+          data: nextData
+        } satisfies GraphNode;
       });
+
+      setNodes(nextNodes);
+      syncProject(nextNodes, edges, { pushHistory: true });
     },
     [edges, nodes, setNodes, syncProject]
   );
@@ -523,7 +539,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
 
   return (
     <div className="graph-container" ref={containerRef}>
-      <ReactFlow
+      <ReactFlow<GraphNodeData, GraphEdgeData, GraphNodeType, GraphEdgeType>
         className="graph-flow"
         nodes={nodes}
         edges={edges}
@@ -533,6 +549,8 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         onSelectionChange={handleSelectionChange}
         onPaneContextMenu={handlePaneContextMenu}
         onNodeContextMenu={handleNodeContextMenu}
+        nodeTypes={canvasNodeTypes}
+        edgeTypes={canvasEdgeTypes}
         defaultEdgeOptions={edgeOptions}
         connectionLineStyle={connectionLineStyle}
         panOnScroll

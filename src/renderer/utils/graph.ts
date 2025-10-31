@@ -1,6 +1,22 @@
-import type { Edge as FlowEdge, Node as FlowNode } from 'reactflow';
+import type { Edge, Node } from 'reactflow';
 
 export const DUPLICATE_OFFSET = 36;
+
+export type GraphNodeData = {
+  label?: string;
+  displayName?: string;
+  nodeType?: string;
+  params?: Record<string, unknown>;
+  outputs?: string[];
+};
+
+export type GraphEdgeData = Record<string, unknown>;
+
+export type GraphNode = Node<GraphNodeData>;
+export type GraphEdge = Edge<GraphEdgeData>;
+
+export type GraphNodeType = GraphNode['type'];
+export type GraphEdgeType = GraphEdge['type'];
 
 export function generateUniqueNodeId(baseId: string, usedIds: Set<string>): string {
   let candidate = baseId;
@@ -37,11 +53,11 @@ export function generateUniqueEdgeId(baseId: string, usedIds: Set<string>): stri
 }
 
 export interface DuplicateSelectionResult {
-  duplicatedNodes: FlowNode[];
-  duplicatedEdges: FlowEdge[];
+  duplicatedNodes: GraphNode[];
+  duplicatedEdges: GraphEdge[];
 }
 
-export function duplicateSelection(nodes: FlowNode[], edges: FlowEdge[], selectedNodeIds: string[]): DuplicateSelectionResult {
+export function duplicateSelection(nodes: GraphNode[], edges: GraphEdge[], selectedNodeIds: string[]): DuplicateSelectionResult {
   if (selectedNodeIds.length === 0) {
     return { duplicatedNodes: [], duplicatedEdges: [] };
   }
@@ -51,14 +67,14 @@ export function duplicateSelection(nodes: FlowNode[], edges: FlowEdge[], selecte
   const selectedSet = new Set(selectedNodeIds);
   const nodeIdMap = new Map<string, string>();
 
-  const duplicatedNodes: FlowNode[] = [];
+  const duplicatedNodes: GraphNode[] = [];
   for (const node of nodes) {
     if (!selectedSet.has(node.id)) {
       continue;
     }
     const nextId = generateUniqueNodeId(node.id, usedNodeIds);
     nodeIdMap.set(node.id, nextId);
-    const duplicatedNode: FlowNode = {
+    const duplicatedNode: GraphNode = {
       ...node,
       id: nextId,
       position: {
@@ -70,7 +86,7 @@ export function duplicateSelection(nodes: FlowNode[], edges: FlowEdge[], selecte
     duplicatedNodes.push(duplicatedNode);
   }
 
-  const duplicatedEdges: FlowEdge[] = [];
+  const duplicatedEdges: GraphEdge[] = [];
   for (const edge of edges) {
     if (!selectedSet.has(edge.source) || !selectedSet.has(edge.target)) {
       continue;
@@ -81,7 +97,7 @@ export function duplicateSelection(nodes: FlowNode[], edges: FlowEdge[], selecte
       continue;
     }
     const nextId = generateUniqueEdgeId(edge.id, usedEdgeIds);
-    const duplicatedEdge: FlowEdge = {
+    const duplicatedEdge: GraphEdge = {
       ...edge,
       id: nextId,
       source: mappedSource,
