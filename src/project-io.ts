@@ -12,13 +12,27 @@ type AjvInstance = {
   addMetaSchema(schema: unknown): unknown;
 };
 
-const AjvConstructor =
-  (AjvModule as unknown as { default?: new (...args: any[]) => AjvInstance }).default ??
-  (AjvModule as unknown as new (...args: any[]) => AjvInstance);
+type AjvConstructor = new (...args: any[]) => AjvInstance;
+type AddFormatsFn = (ajv: unknown, options?: unknown) => unknown;
 
-const addFormats =
-  (addFormatsModule as unknown as { default?: (ajv: unknown, options?: unknown) => unknown }).default ??
-  (addFormatsModule as unknown as (ajv: unknown, options?: unknown) => unknown);
+export function resolveAjvConstructor(module: unknown): AjvConstructor {
+  const candidate = (module as { default?: AjvConstructor }).default;
+  if (typeof candidate === 'function') {
+    return candidate as AjvConstructor;
+  }
+  return module as AjvConstructor;
+}
+
+export function resolveAddFormats(module: unknown): AddFormatsFn {
+  const candidate = (module as { default?: AddFormatsFn }).default;
+  if (typeof candidate === 'function') {
+    return candidate as AddFormatsFn;
+  }
+  return module as AddFormatsFn;
+}
+
+const AjvConstructor = resolveAjvConstructor(AjvModule);
+const addFormats = resolveAddFormats(addFormatsModule);
 
 const ajv = new AjvConstructor({
   allErrors: true,
