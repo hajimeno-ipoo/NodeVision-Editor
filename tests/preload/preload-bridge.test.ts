@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRequire, Module as NodeModule } from 'node:module';
 
 const electronMocks = {
@@ -6,45 +6,47 @@ const electronMocks = {
   invoke: vi.fn()
 };
 
-let originalLoad: ((request: string, parent: unknown, isMain: boolean) => unknown) | undefined;
 let exposedApi: Record<string, any>;
 
-describe('preload bridge', () => {
-  beforeAll(() => {
-    originalLoad = (NodeModule as any)._load;
-    (NodeModule as any)._load = (request: string, parent: unknown, isMain: boolean) => {
-      if (request === 'electron') {
-        return {
-          contextBridge: {
-            exposeInMainWorld: electronMocks.exposeInMainWorld
-          },
-          ipcRenderer: {
-            invoke: electronMocks.invoke
-          }
-        };
-      }
-      return originalLoad!(request, parent, isMain);
-    };
+function loadPreloadBridge(): void {
+  const originalLoad = (NodeModule as any)._load;
+  (NodeModule as any)._load = function patched(request: string, parent: unknown, isMain: boolean) {
+    if (request === 'electron') {
+      return {
+        contextBridge: {
+          exposeInMainWorld: electronMocks.exposeInMainWorld
+        },
+        ipcRenderer: {
+          invoke: electronMocks.invoke
+        }
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
 
+  try {
     const requireFromTest = createRequire(import.meta.url);
-    electronMocks.invoke.mockResolvedValue(undefined);
-    requireFromTest('../../preload/index.cjs');
-    const call = electronMocks.exposeInMainWorld.mock.calls.at(-1);
-    if (!call) {
-      throw new Error('preload bridge did not expose API');
-    }
-    exposedApi = call[1] as Record<string, any>;
-  });
+    const modulePath = requireFromTest.resolve('../../preload/index.cjs');
+    delete requireFromTest.cache?.[modulePath];
+    requireFromTest(modulePath);
+  } finally {
+    (NodeModule as any)._load = originalLoad;
+  }
 
-  afterAll(() => {
-    if (originalLoad) {
-      (NodeModule as any)._load = originalLoad;
-    }
-  });
+  const call = electronMocks.exposeInMainWorld.mock.calls.at(-1);
+  if (!call) {
+    throw new Error('preload bridge did not expose API');
+  }
+  exposedApi = call[1] as Record<string, any>;
+}
 
+describe('preload bridge', () => {
   beforeEach(() => {
-    electronMocks.invoke.mockClear();
+    vi.resetModules();
+    electronMocks.exposeInMainWorld.mockClear();
+    electronMocks.invoke.mockReset();
     electronMocks.invoke.mockResolvedValue(undefined);
+    loadPreloadBridge();
   });
 
   it('exposes nodevision API namespace', () => {
