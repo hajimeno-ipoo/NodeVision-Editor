@@ -51,46 +51,45 @@ export function duplicateSelection(nodes: Node[], edges: Edge[], selectedNodeIds
   const selectedSet = new Set(selectedNodeIds);
   const nodeIdMap = new Map<string, string>();
 
-  const duplicatedNodes = nodes
-    .filter((node) => selectedSet.has(node.id))
-    .map((node) => {
-      const nextId = generateUniqueNodeId(node.id, usedNodeIds);
-      nodeIdMap.set(node.id, nextId);
-      return {
-        ...node,
-        id: nextId,
-        position: {
-          x: (node.position?.x ?? 0) + DUPLICATE_OFFSET,
-          y: (node.position?.y ?? 0) + DUPLICATE_OFFSET
-        },
-        selected: true,
-        data: {
-          ...node.data
-        }
-      } satisfies Node;
-    });
+  const duplicatedNodes: Node[] = [];
+  for (const node of nodes) {
+    if (!selectedSet.has(node.id)) {
+      continue;
+    }
+    const nextId = generateUniqueNodeId(node.id, usedNodeIds);
+    nodeIdMap.set(node.id, nextId);
+    const duplicatedNode: Node = {
+      ...node,
+      id: nextId,
+      position: {
+        x: (node.position?.x ?? 0) + DUPLICATE_OFFSET,
+        y: (node.position?.y ?? 0) + DUPLICATE_OFFSET
+      },
+      selected: true
+    };
+    duplicatedNodes.push(duplicatedNode);
+  }
 
-  const duplicatedEdges = edges
-    .filter((edge) => selectedSet.has(edge.source) && selectedSet.has(edge.target))
-    .map((edge) => {
-      const mappedSource = nodeIdMap.get(edge.source);
-      const mappedTarget = nodeIdMap.get(edge.target);
-      if (!mappedSource || !mappedTarget) {
-        return null;
-      }
-      const nextId = generateUniqueEdgeId(edge.id, usedEdgeIds);
-      return {
-        ...edge,
-        id: nextId,
-        source: mappedSource,
-        target: mappedTarget,
-        selected: true,
-        data: {
-          ...edge.data
-        }
-      } satisfies Edge;
-    })
-    .filter((edge): edge is Edge => edge !== null);
+  const duplicatedEdges: Edge[] = [];
+  for (const edge of edges) {
+    if (!selectedSet.has(edge.source) || !selectedSet.has(edge.target)) {
+      continue;
+    }
+    const mappedSource = nodeIdMap.get(edge.source);
+    const mappedTarget = nodeIdMap.get(edge.target);
+    if (!mappedSource || !mappedTarget) {
+      continue;
+    }
+    const nextId = generateUniqueEdgeId(edge.id, usedEdgeIds);
+    const duplicatedEdge: Edge = {
+      ...edge,
+      id: nextId,
+      source: mappedSource,
+      target: mappedTarget,
+      selected: true
+    };
+    duplicatedEdges.push(duplicatedEdge);
+  }
 
   return { duplicatedNodes, duplicatedEdges };
 }
