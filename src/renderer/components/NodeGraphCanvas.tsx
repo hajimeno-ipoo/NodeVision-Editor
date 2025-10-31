@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -8,6 +8,7 @@ import ReactFlow, {
   applyNodeChanges,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type EdgeChange,
   type NodeChange,
@@ -15,6 +16,7 @@ import ReactFlow, {
   type Node
 } from 'reactflow';
 import type { NodeVisionProject } from '../../shared/project-types';
+import { duplicateSelection, generateUniqueNodeId } from '../utils/graph';
 
 type ProjectChangeMeta = {
   pushHistory?: boolean;
@@ -52,6 +54,16 @@ const initialEdges: Edge[] = [
   { id: 'contrast-to-preview', source: 'contrast', target: 'preview', markerEnd: { type: 'arrowclosed' } }
 ];
 
+type QuickMenuContext = 'canvas' | 'node';
+
+interface QuickMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  context: QuickMenuContext;
+  nodeId?: string;
+}
+
 interface NodeGraphCanvasProps {
   project?: NodeVisionProject;
   onProjectChange?: (project: NodeVisionProject, meta?: ProjectChangeMeta) => void;
@@ -61,7 +73,11 @@ interface NodeGraphCanvasProps {
 export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }: NodeGraphCanvasProps) {
   const [nodes, setNodes] = useNodesState(initialNodes);
   const [edges, setEdges] = useEdgesState(initialEdges);
+  const reactFlowInstance = useReactFlow<Node, Edge>();
   const [selectedElements, setSelectedElements] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  const [quickMenu, setQuickMenu] = useState<QuickMenuState>({ isOpen: false, x: 0, y: 0, context: 'canvas' });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const quickMenuRef = useRef<HTMLDivElement | null>(null);
 
   const projectSnapshot = useMemo(() => project, [project]);
 
@@ -101,8 +117,13 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           y: flowNode.position.y ?? 0
         };
         if (base) {
+          const displayName =
+            typeof flowNode.data?.displayName === 'string' && flowNode.data.displayName.trim().length > 0
+              ? flowNode.data.displayName
+              : base.displayName;
           return {
             ...base,
+            displayName,
             position: {
               x: nextPosition.x,
               y: nextPosition.y
@@ -285,39 +306,58 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
 
       if ((event.key === 'd' || event.key === 'D') && (event.metaKey || event.ctrlKey) && selectedElements.nodes.length > 0) {
         event.preventDefault();
+        const selectedIds = selectedElements.nodes.map((node) => node.id);
+        let duplicationResult: ReturnType<typeof duplicateSelection> | null = null;
         setNodes((currentNodes) => {
-          const existingIds = new Set(currentNodes.map((node) => node.id));
-          const duplicates = selectedElements.nodes.map((node) => {
-            let suffix = 1;
-            let candidateId = `${node.id}-copy`;
-            while (existingIds.has(candidateId)) {
-              suffix += 1;
-              candidateId = `${node.id}-copy-${suffix}`;
-            }
-            existingIds.add(candidateId);
-            return {
-              ...node,
-              id: candidateId,
-              position: {
-                x: (node.position?.x ?? 0) + 36,
-                y: (node.position?.y ?? 0) + 36
-              },
-              selected: false
-            };
-          });
-          if (duplicates.length === 0) {
+          const result = duplicateSelection(currentNodes, edges, selectedIds);
+          if (result.duplicatedNodes.length === 0) {
             return currentNodes;
           }
-          const nextNodes = [...currentNodes, ...duplicates];
-          syncProject(nextNodes, edges, { pushHistory: true });
+          duplicationResult = result;
+          const nextNodes = [...currentNodes, ...result.duplicatedNodes];
+          setEdges((currentEdges) => {
+            const nextEdges = [...currentEdges, ...result.duplicatedEdges];
+            syncProject(nextNodes, nextEdges, { pushHistory: true });
+            return nextEdges;
+          });
           return nextNodes;
         });
+        if (duplicationResult) {
+          setSelectedElements({ nodes: duplicationResult.duplicatedNodes, edges: duplicationResult.duplicatedEdges });
+          if (onSelectionChange) {
+            onSelectionChange({
+              nodes: duplicationResult.duplicatedNodes.map((node) => node.id),
+              edges: duplicationResult.duplicatedEdges.map((edge) => {
+                const fromHandle = edge.sourceHandle ? `:${edge.sourceHandle}` : '';
+                const toHandle = edge.targetHandle ? `:${edge.targetHandle}` : '';
+                return `${edge.source}${fromHandle}->${edge.target}${toHandle}`;
+              })
+            });
+          }
+          setQuickMenu((state) => (state.isOpen ? { ...state, isOpen: false } : state));
+        }
+      }
+    };
+
+    const handleQuickMenuKey = (event: KeyboardEvent) => {
+      if (event.key === '?' || (event.key === '/' && event.shiftKey)) {
+        event.preventDefault();
+        const bounds = containerRef.current?.getBoundingClientRect();
+        const x = bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2;
+        const y = bounds ? bounds.top + bounds.height / 2 : window.innerHeight / 2;
+        const context: QuickMenuContext = selectedElements.nodes.length > 0 ? 'node' : 'canvas';
+        const nodeId = selectedElements.nodes[0]?.id;
+        setQuickMenu({ isOpen: true, x, y, context, nodeId });
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [edges, selectedElements.edges, selectedElements.nodes, setEdges, setNodes, syncProject]);
+    window.addEventListener('keydown', handleQuickMenuKey);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleQuickMenuKey);
+    };
+  }, [edges, onSelectionChange, selectedElements.edges, selectedElements.nodes, setEdges, setNodes, syncProject]);
 
   const edgeOptions = useMemo(
     () => ({
@@ -344,8 +384,149 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
     []
   );
 
+  const openQuickMenu = useCallback((x: number, y: number, context: QuickMenuContext, nodeId?: string) => {
+    setQuickMenu({ isOpen: true, x, y, context, nodeId });
+  }, []);
+
+  const closeQuickMenu = useCallback(() => {
+    setQuickMenu((state) => (state.isOpen ? { ...state, isOpen: false } : state));
+  }, []);
+
+  const handlePaneContextMenu = useCallback(
+    (event: ReactMouseEvent | ReactPointerEvent) => {
+      event.preventDefault();
+      openQuickMenu(event.clientX, event.clientY, 'canvas');
+    },
+    [openQuickMenu]
+  );
+
+  const handleNodeContextMenu = useCallback(
+    (event: ReactMouseEvent, node: Node) => {
+      event.preventDefault();
+      openQuickMenu(event.clientX, event.clientY, 'node', node.id);
+    },
+    [openQuickMenu]
+  );
+
+  const handleAddNodeAt = useCallback(
+    (clientX: number, clientY: number) => {
+      const bounds = containerRef.current?.getBoundingClientRect();
+      const projected = bounds
+        ? reactFlowInstance.project({ x: clientX - bounds.left, y: clientY - bounds.top })
+        : { x: clientX, y: clientY };
+
+      setNodes((currentNodes) => {
+        const usedIds = new Set(currentNodes.map((node) => node.id));
+        const newId = generateUniqueNodeId('node', usedIds);
+        const displayName = `Node ${newId}`;
+        const newNode: Node = {
+          id: newId,
+          position: {
+            x: projected.x,
+            y: projected.y
+          },
+          data: {
+            label: displayName,
+            displayName,
+            nodeType: 'CustomNode'
+          },
+          selected: true
+        };
+        const nextNodes = [...currentNodes, newNode];
+        syncProject(nextNodes, edges, { pushHistory: true });
+        setSelectedElements({ nodes: [newNode], edges: [] });
+        if (onSelectionChange) {
+          onSelectionChange({ nodes: [newNode.id], edges: [] });
+        }
+        return nextNodes;
+      });
+    },
+    [edges, onSelectionChange, reactFlowInstance, setNodes, syncProject]
+  );
+
+  const handleEditNodeLabel = useCallback(
+    (nodeId: string | undefined) => {
+      if (!nodeId) {
+        return;
+      }
+      const currentNode = nodes.find((node) => node.id === nodeId);
+      const currentLabel =
+        typeof currentNode?.data?.displayName === 'string'
+          ? currentNode.data.displayName
+          : typeof currentNode?.data?.label === 'string'
+            ? currentNode.data.label
+            : '';
+      const nextLabel = window.prompt('ノードのラベルを入力してください', currentLabel ?? '');
+      if (nextLabel === null) {
+        return;
+      }
+      const trimmed = nextLabel.trim();
+      if (trimmed.length === 0) {
+        return;
+      }
+
+      setNodes((currentNodes) => {
+        const nextNodes = currentNodes.map((node) =>
+          node.id === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: trimmed,
+                  displayName: trimmed
+                }
+              }
+            : node
+        );
+        syncProject(nextNodes, edges, { pushHistory: true });
+        return nextNodes;
+      });
+    },
+    [edges, nodes, setNodes, syncProject]
+  );
+
+  const handleQuickAction = useCallback(
+    (action: 'add-node' | 'edit-label') => {
+      if (action === 'add-node') {
+        handleAddNodeAt(quickMenu.x, quickMenu.y);
+      } else if (action === 'edit-label') {
+        handleEditNodeLabel(quickMenu.nodeId);
+      }
+      closeQuickMenu();
+    },
+    [closeQuickMenu, handleAddNodeAt, handleEditNodeLabel, quickMenu.nodeId, quickMenu.x, quickMenu.y]
+  );
+
+  useEffect(() => {
+    if (!quickMenu.isOpen) {
+      return;
+    }
+
+    const handleGlobalClick = (event: MouseEvent) => {
+      if (!quickMenuRef.current) {
+        return;
+      }
+      if (!quickMenuRef.current.contains(event.target as Node)) {
+        closeQuickMenu();
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeQuickMenu();
+      }
+    };
+
+    window.addEventListener('mousedown', handleGlobalClick);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleGlobalClick);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [closeQuickMenu, quickMenu.isOpen]);
+
   return (
-    <div className="graph-container">
+    <div className="graph-container" ref={containerRef}>
       <ReactFlow
         className="graph-flow"
         nodes={nodes}
@@ -354,6 +535,8 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         onEdgesChange={handleEdgesChange}
         onConnect={onConnect}
         onSelectionChange={handleSelectionChange}
+        onPaneContextMenu={handlePaneContextMenu}
+        onNodeContextMenu={handleNodeContextMenu}
         defaultEdgeOptions={edgeOptions}
         connectionLineStyle={connectionLineStyle}
         panOnScroll
@@ -367,6 +550,24 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         <MiniMap pannable zoomable />
         <Controls showInteractive={false} />
       </ReactFlow>
+      {quickMenu.isOpen ? (
+        <div
+          ref={quickMenuRef}
+          className="graph-quick-menu"
+          style={{ top: quickMenu.y, left: quickMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button type="button" onClick={() => handleQuickAction('add-node')}>
+            ノード追加
+          </button>
+          {quickMenu.context === 'node' ? (
+            <button type="button" onClick={() => handleQuickAction('edit-label')}>
+              ラベル編集
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
