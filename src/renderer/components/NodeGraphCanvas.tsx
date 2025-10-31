@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -61,6 +61,7 @@ interface NodeGraphCanvasProps {
 export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }: NodeGraphCanvasProps) {
   const [nodes, setNodes] = useNodesState(initialNodes);
   const [edges, setEdges] = useEdgesState(initialEdges);
+  const [selectedElements, setSelectedElements] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
 
   const projectSnapshot = useMemo(() => project, [project]);
 
@@ -226,8 +227,10 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Node[]; edges: Edge[] }) => {
       if (!onSelectionChange) {
+        setSelectedElements({ nodes: selectedNodes, edges: selectedEdges });
         return;
       }
+      setSelectedElements({ nodes: selectedNodes, edges: selectedEdges });
       onSelectionChange({
         nodes: selectedNodes.map((item) => item.id),
         edges: selectedEdges.map((item) => {
@@ -240,15 +243,122 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
     [onSelectionChange]
   );
 
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      const tagName = target.tagName;
+      return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+
+      const hasSelection = selectedElements.nodes.length > 0 || selectedElements.edges.length > 0;
+
+      if ((event.key === 'Delete' || event.key === 'Backspace') && hasSelection) {
+        event.preventDefault();
+        const nodesToRemove = new Set(selectedElements.nodes.map((node) => node.id));
+        const edgesToRemove = new Set(selectedElements.edges.map((edge) => edge.id));
+
+        if (nodesToRemove.size === 0 && edgesToRemove.size === 0) {
+          return;
+        }
+
+        setNodes((currentNodes) => {
+          const filteredNodes = currentNodes.filter((node) => !nodesToRemove.has(node.id));
+          setEdges((currentEdges) => {
+            const filteredEdges = currentEdges.filter(
+              (edge) =>
+                !edgesToRemove.has(edge.id) && !nodesToRemove.has(edge.source) && !nodesToRemove.has(edge.target)
+            );
+            syncProject(filteredNodes, filteredEdges, { pushHistory: true });
+            return filteredEdges;
+          });
+          return filteredNodes;
+        });
+        return;
+      }
+
+      if ((event.key === 'd' || event.key === 'D') && (event.metaKey || event.ctrlKey) && selectedElements.nodes.length > 0) {
+        event.preventDefault();
+        setNodes((currentNodes) => {
+          const existingIds = new Set(currentNodes.map((node) => node.id));
+          const duplicates = selectedElements.nodes.map((node) => {
+            let suffix = 1;
+            let candidateId = `${node.id}-copy`;
+            while (existingIds.has(candidateId)) {
+              suffix += 1;
+              candidateId = `${node.id}-copy-${suffix}`;
+            }
+            existingIds.add(candidateId);
+            return {
+              ...node,
+              id: candidateId,
+              position: {
+                x: (node.position?.x ?? 0) + 36,
+                y: (node.position?.y ?? 0) + 36
+              },
+              selected: false
+            };
+          });
+          if (duplicates.length === 0) {
+            return currentNodes;
+          }
+          const nextNodes = [...currentNodes, ...duplicates];
+          syncProject(nextNodes, edges, { pushHistory: true });
+          return nextNodes;
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [edges, selectedElements.edges, selectedElements.nodes, setEdges, setNodes, syncProject]);
+
+  const edgeOptions = useMemo(
+    () => ({
+      type: 'smoothstep' as const,
+      animated: false,
+      style: {
+        stroke: '#9d8cff',
+        strokeWidth: 2
+      },
+      markerEnd: {
+        type: 'arrowclosed',
+        color: '#c4b5fd'
+      }
+    }),
+    []
+  );
+
+  const connectionLineStyle = useMemo(
+    () => ({
+      stroke: '#f97316',
+      strokeWidth: 2.6,
+      strokeDasharray: '8 4'
+    }),
+    []
+  );
+
   return (
     <div className="graph-container">
       <ReactFlow
+        className="graph-flow"
         nodes={nodes}
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={onConnect}
         onSelectionChange={handleSelectionChange}
+        defaultEdgeOptions={edgeOptions}
+        connectionLineStyle={connectionLineStyle}
+        panOnScroll
+        selectionOnDrag
+        attributionPosition="bottom-right"
         fitView
         minZoom={0.4}
         maxZoom={1.5}
