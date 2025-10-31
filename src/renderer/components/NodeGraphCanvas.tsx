@@ -3,6 +3,7 @@ import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
@@ -12,17 +13,17 @@ import ReactFlow, {
   type Connection,
   type EdgeChange,
   type NodeChange,
-  type Edge,
-  type Node
+  type Edge as FlowEdge,
+  type Node as FlowNode
 } from 'reactflow';
-import type { NodeVisionProject } from '../../shared/project-types';
-import { duplicateSelection, generateUniqueNodeId } from '../utils/graph';
+import type { NodeVisionProject } from '../../shared/project-types.js';
+import { duplicateSelection, generateUniqueNodeId } from '../utils/graph.js';
 
 type ProjectChangeMeta = {
   pushHistory?: boolean;
 };
 
-const initialNodes: Node[] = [
+const initialNodes: FlowNode[] = [
   {
     id: 'media-input',
     position: { x: 0, y: 80 },
@@ -47,11 +48,11 @@ const initialNodes: Node[] = [
   }
 ];
 
-const initialEdges: Edge[] = [
+const initialEdges: FlowEdge[] = [
   { id: 'media-to-exposure', source: 'media-input', target: 'exposure', animated: true },
   { id: 'media-to-contrast', source: 'media-input', target: 'contrast', animated: true, style: { strokeDasharray: '4 2' } },
-  { id: 'merge-to-preview', source: 'exposure', target: 'preview', markerEnd: { type: 'arrowclosed' } },
-  { id: 'contrast-to-preview', source: 'contrast', target: 'preview', markerEnd: { type: 'arrowclosed' } }
+  { id: 'merge-to-preview', source: 'exposure', target: 'preview', markerEnd: { type: MarkerType.ArrowClosed } },
+  { id: 'contrast-to-preview', source: 'contrast', target: 'preview', markerEnd: { type: MarkerType.ArrowClosed } }
 ];
 
 type QuickMenuContext = 'canvas' | 'node';
@@ -71,10 +72,10 @@ interface NodeGraphCanvasProps {
 }
 
 export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }: NodeGraphCanvasProps) {
-  const [nodes, setNodes] = useNodesState(initialNodes);
-  const [edges, setEdges] = useEdgesState(initialEdges);
-  const reactFlowInstance = useReactFlow<Node, Edge>();
-  const [selectedElements, setSelectedElements] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  const [nodes, setNodes] = useNodesState<FlowNode>(initialNodes);
+  const [edges, setEdges] = useEdgesState<FlowEdge>(initialEdges);
+  const reactFlowInstance = useReactFlow<FlowNode, FlowEdge>();
+  const [selectedElements, setSelectedElements] = useState<{ nodes: FlowNode[]; edges: FlowEdge[] }>({ nodes: [], edges: [] });
   const [quickMenu, setQuickMenu] = useState<QuickMenuState>({ isOpen: false, x: 0, y: 0, context: 'canvas' });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const quickMenuRef = useRef<HTMLDivElement | null>(null);
@@ -82,7 +83,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   const projectSnapshot = useMemo(() => project, [project]);
 
   const syncProject = useCallback(
-    (nextNodes: Node[], nextEdges: Edge[], meta?: ProjectChangeMeta) => {
+    (nextNodes: FlowNode[], nextEdges: FlowEdge[], meta?: ProjectChangeMeta) => {
       if (!projectSnapshot || !onProjectChange) {
         return;
       }
@@ -167,7 +168,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
       return;
     }
 
-    const derivedNodes: Node[] = project.nodes.map((node, index) => {
+    const derivedNodes: FlowNode[] = project.nodes.map((node, index): FlowNode => {
       const position = node.position ?? {
         x: 220 * (index % 4),
         y: 140 * Math.floor(index / 4)
@@ -183,10 +184,10 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           label
         },
         type: node.inputs && Object.keys(node.inputs).length === 0 ? 'input' : node.outputs.length === 0 ? 'output' : undefined
-      };
+      } satisfies FlowNode;
     });
 
-    const derivedEdges: Edge[] = project.edges.map((edge, idx) => {
+    const derivedEdges: FlowEdge[] = project.edges.map((edge, idx): FlowEdge => {
       const [fromNode] = edge.from.split(':');
       const [toNode] = edge.to.split(':');
       return {
@@ -196,9 +197,9 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         sourceHandle: edge.from.includes(':') ? edge.from.split(':')[1] : undefined,
         targetHandle: edge.to.includes(':') ? edge.to.split(':')[1] : undefined,
         animated: !!edge.disabled,
-        markerEnd: { type: 'arrowclosed' },
+        markerEnd: { type: MarkerType.ArrowClosed },
         style: edge.disabled ? { strokeDasharray: '4 2', opacity: 0.6 } : undefined
-      };
+      } satisfies FlowEdge;
     });
 
     setNodes(derivedNodes);
@@ -246,7 +247,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   );
 
   const handleSelectionChange = useCallback(
-    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: Node[]; edges: Edge[] }) => {
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
       if (!onSelectionChange) {
         setSelectedElements({ nodes: selectedNodes, edges: selectedEdges });
         return;
@@ -289,53 +290,48 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
           return;
         }
 
-        setNodes((currentNodes) => {
-          const filteredNodes = currentNodes.filter((node) => !nodesToRemove.has(node.id));
-          setEdges((currentEdges) => {
-            const filteredEdges = currentEdges.filter(
-              (edge) =>
-                !edgesToRemove.has(edge.id) && !nodesToRemove.has(edge.source) && !nodesToRemove.has(edge.target)
-            );
-            syncProject(filteredNodes, filteredEdges, { pushHistory: true });
-            return filteredEdges;
-          });
-          return filteredNodes;
-        });
+        const filteredNodes = nodes.filter((node) => !nodesToRemove.has(node.id));
+        const filteredEdges = edges.filter(
+          (edge) => !edgesToRemove.has(edge.id) && !nodesToRemove.has(edge.source) && !nodesToRemove.has(edge.target)
+        );
+
+        setNodes(filteredNodes);
+        setEdges(filteredEdges);
+        syncProject(filteredNodes, filteredEdges, { pushHistory: true });
+        setSelectedElements({ nodes: [], edges: [] });
+        if (onSelectionChange) {
+          onSelectionChange({ nodes: [], edges: [] });
+        }
+        setQuickMenu((state) => (state.isOpen ? { ...state, isOpen: false } : state));
         return;
       }
 
       if ((event.key === 'd' || event.key === 'D') && (event.metaKey || event.ctrlKey) && selectedElements.nodes.length > 0) {
         event.preventDefault();
         const selectedIds = selectedElements.nodes.map((node) => node.id);
-        let duplicationResult: ReturnType<typeof duplicateSelection> | null = null;
-        setNodes((currentNodes) => {
-          const result = duplicateSelection(currentNodes, edges, selectedIds);
-          if (result.duplicatedNodes.length === 0) {
-            return currentNodes;
-          }
-          duplicationResult = result;
-          const nextNodes = [...currentNodes, ...result.duplicatedNodes];
-          setEdges((currentEdges) => {
-            const nextEdges = [...currentEdges, ...result.duplicatedEdges];
-            syncProject(nextNodes, nextEdges, { pushHistory: true });
-            return nextEdges;
-          });
-          return nextNodes;
-        });
-        if (duplicationResult) {
-          setSelectedElements({ nodes: duplicationResult.duplicatedNodes, edges: duplicationResult.duplicatedEdges });
-          if (onSelectionChange) {
-            onSelectionChange({
-              nodes: duplicationResult.duplicatedNodes.map((node) => node.id),
-              edges: duplicationResult.duplicatedEdges.map((edge) => {
-                const fromHandle = edge.sourceHandle ? `:${edge.sourceHandle}` : '';
-                const toHandle = edge.targetHandle ? `:${edge.targetHandle}` : '';
-                return `${edge.source}${fromHandle}->${edge.target}${toHandle}`;
-              })
-            });
-          }
-          setQuickMenu((state) => (state.isOpen ? { ...state, isOpen: false } : state));
+        const duplicationResult = duplicateSelection(nodes, edges, selectedIds);
+        if (duplicationResult.duplicatedNodes.length === 0) {
+          return;
         }
+
+        const nextNodes = [...nodes, ...duplicationResult.duplicatedNodes];
+        const nextEdges = [...edges, ...duplicationResult.duplicatedEdges];
+
+        setNodes(nextNodes);
+        setEdges(nextEdges);
+        syncProject(nextNodes, nextEdges, { pushHistory: true });
+        setSelectedElements({ nodes: duplicationResult.duplicatedNodes, edges: duplicationResult.duplicatedEdges });
+        if (onSelectionChange) {
+          onSelectionChange({
+            nodes: duplicationResult.duplicatedNodes.map((node) => node.id),
+            edges: duplicationResult.duplicatedEdges.map((edge) => {
+              const fromHandle = edge.sourceHandle ? `:${edge.sourceHandle}` : '';
+              const toHandle = edge.targetHandle ? `:${edge.targetHandle}` : '';
+              return `${edge.source}${fromHandle}->${edge.target}${toHandle}`;
+            })
+          });
+        }
+        setQuickMenu((state) => (state.isOpen ? { ...state, isOpen: false } : state));
       }
     };
 
@@ -368,7 +364,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         strokeWidth: 2
       },
       markerEnd: {
-        type: 'arrowclosed',
+        type: MarkerType.ArrowClosed,
         color: '#c4b5fd'
       }
     }),
@@ -401,7 +397,7 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
   );
 
   const handleNodeContextMenu = useCallback(
-    (event: ReactMouseEvent, node: Node) => {
+    (event: ReactMouseEvent, node: FlowNode) => {
       event.preventDefault();
       openQuickMenu(event.clientX, event.clientY, 'node', node.id);
     },
@@ -415,33 +411,32 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
         ? reactFlowInstance.project({ x: clientX - bounds.left, y: clientY - bounds.top })
         : { x: clientX, y: clientY };
 
-      setNodes((currentNodes) => {
-        const usedIds = new Set(currentNodes.map((node) => node.id));
-        const newId = generateUniqueNodeId('node', usedIds);
-        const displayName = `Node ${newId}`;
-        const newNode: Node = {
-          id: newId,
-          position: {
-            x: projected.x,
-            y: projected.y
-          },
-          data: {
-            label: displayName,
-            displayName,
-            nodeType: 'CustomNode'
-          },
-          selected: true
-        };
-        const nextNodes = [...currentNodes, newNode];
-        syncProject(nextNodes, edges, { pushHistory: true });
-        setSelectedElements({ nodes: [newNode], edges: [] });
-        if (onSelectionChange) {
-          onSelectionChange({ nodes: [newNode.id], edges: [] });
-        }
-        return nextNodes;
-      });
+      const usedIds = new Set(nodes.map((node) => node.id));
+      const newId = generateUniqueNodeId('node', usedIds);
+      const displayName = `Node ${newId}`;
+      const newNode: FlowNode = {
+        id: newId,
+        position: {
+          x: projected.x,
+          y: projected.y
+        },
+        data: {
+          label: displayName,
+          displayName,
+          nodeType: 'CustomNode'
+        },
+        selected: true
+      } satisfies FlowNode;
+
+      const nextNodes = [...nodes, newNode];
+      setNodes(nextNodes);
+      syncProject(nextNodes, edges, { pushHistory: true });
+      setSelectedElements({ nodes: [newNode], edges: [] });
+      if (onSelectionChange) {
+        onSelectionChange({ nodes: [newNode.id], edges: [] });
+      }
     },
-    [edges, onSelectionChange, reactFlowInstance, setNodes, syncProject]
+    [edges, nodes, onSelectionChange, reactFlowInstance, setNodes, syncProject]
   );
 
   const handleEditNodeLabel = useCallback(
@@ -506,7 +501,8 @@ export function NodeGraphCanvas({ project, onProjectChange, onSelectionChange }:
       if (!quickMenuRef.current) {
         return;
       }
-      if (!quickMenuRef.current.contains(event.target as Node)) {
+      const target = event.target instanceof globalThis.Node ? event.target : null;
+      if (!target || !quickMenuRef.current.contains(target)) {
         closeQuickMenu();
       }
     };

@@ -1,4 +1,4 @@
-import type { Edge, Node } from 'reactflow';
+import type { Edge as FlowEdge, Node as FlowNode } from 'reactflow';
 
 export const DUPLICATE_OFFSET = 36;
 
@@ -37,11 +37,11 @@ export function generateUniqueEdgeId(baseId: string, usedIds: Set<string>): stri
 }
 
 export interface DuplicateSelectionResult {
-  duplicatedNodes: Node[];
-  duplicatedEdges: Edge[];
+  duplicatedNodes: FlowNode[];
+  duplicatedEdges: FlowEdge[];
 }
 
-export function duplicateSelection(nodes: Node[], edges: Edge[], selectedNodeIds: string[]): DuplicateSelectionResult {
+export function duplicateSelection(nodes: FlowNode[], edges: FlowEdge[], selectedNodeIds: string[]): DuplicateSelectionResult {
   if (selectedNodeIds.length === 0) {
     return { duplicatedNodes: [], duplicatedEdges: [] };
   }
@@ -51,14 +51,14 @@ export function duplicateSelection(nodes: Node[], edges: Edge[], selectedNodeIds
   const selectedSet = new Set(selectedNodeIds);
   const nodeIdMap = new Map<string, string>();
 
-  const duplicatedNodes: Node[] = [];
+  const duplicatedNodes: FlowNode[] = [];
   for (const node of nodes) {
     if (!selectedSet.has(node.id)) {
       continue;
     }
     const nextId = generateUniqueNodeId(node.id, usedNodeIds);
     nodeIdMap.set(node.id, nextId);
-    const duplicatedNode: Node = {
+    const duplicatedNode: FlowNode = {
       ...node,
       id: nextId,
       position: {
@@ -70,7 +70,7 @@ export function duplicateSelection(nodes: Node[], edges: Edge[], selectedNodeIds
     duplicatedNodes.push(duplicatedNode);
   }
 
-  const duplicatedEdges: Edge[] = [];
+  const duplicatedEdges: FlowEdge[] = [];
   for (const edge of edges) {
     if (!selectedSet.has(edge.source) || !selectedSet.has(edge.target)) {
       continue;
@@ -81,7 +81,7 @@ export function duplicateSelection(nodes: Node[], edges: Edge[], selectedNodeIds
       continue;
     }
     const nextId = generateUniqueEdgeId(edge.id, usedEdgeIds);
-    const duplicatedEdge: Edge = {
+    const duplicatedEdge: FlowEdge = {
       ...edge,
       id: nextId,
       source: mappedSource,

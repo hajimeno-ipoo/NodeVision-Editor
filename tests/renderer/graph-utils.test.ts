@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Edge, Node } from 'reactflow';
+import type { Edge as FlowEdge, Node as FlowNode } from 'reactflow';
 import { duplicateSelection, generateUniqueEdgeId, generateUniqueNodeId } from '../../src/renderer/utils/graph.js';
 
-function createNode(id: string, overrides: Partial<Node> = {}): Node {
+function createNode(id: string, overrides: Partial<FlowNode> = {}): FlowNode {
   return {
     id,
     position: { x: 0, y: 0 },
@@ -11,7 +11,7 @@ function createNode(id: string, overrides: Partial<Node> = {}): Node {
   };
 }
 
-function createEdge(id: string, source: string, target: string, overrides: Partial<Edge> = {}): Edge {
+function createEdge(id: string, source: string, target: string, overrides: Partial<FlowEdge> = {}): FlowEdge {
   return {
     id,
     source,
@@ -42,20 +42,20 @@ describe('graph utils', () => {
   });
 
   it('duplicateSelection returns empty result when nothing selected', () => {
-    const nodes: Node[] = [createNode('a'), createNode('b')];
-    const edges: Edge[] = [createEdge('edge-a-b', 'a', 'b')];
+    const nodes: FlowNode[] = [createNode('a'), createNode('b')];
+    const edges: FlowEdge[] = [createEdge('edge-a-b', 'a', 'b')];
     const result = duplicateSelection(nodes, edges, []);
     expect(result.duplicatedNodes).toHaveLength(0);
     expect(result.duplicatedEdges).toHaveLength(0);
   });
 
   it('duplicates selected nodes and internal edges', () => {
-    const nodes: Node[] = [
+    const nodes: FlowNode[] = [
       createNode('a', { position: { x: 10, y: 10 }, data: { label: 'Node A' } }),
       createNode('b', { position: { x: 50, y: 50 }, data: { label: 'Node B' } }),
       createNode('c', { position: { x: 90, y: 90 }, data: { label: 'Node C' } })
     ];
-    const edges: Edge[] = [
+    const edges: FlowEdge[] = [
       createEdge('edge-a-b', 'a', 'b'),
       createEdge('edge-b-c', 'b', 'c'),
       createEdge('edge-c-a', 'c', 'a')
@@ -76,23 +76,23 @@ describe('graph utils', () => {
   });
 
   it('skips edges that do not connect duplicated nodes', () => {
-    const nodes: Node[] = [createNode('solo'), createNode('other')];
-    const edges: Edge[] = [createEdge('edge', 'solo', 'other')];
+    const nodes: FlowNode[] = [createNode('solo'), createNode('other')];
+    const edges: FlowEdge[] = [createEdge('edge', 'solo', 'other')];
     const { duplicatedNodes, duplicatedEdges } = duplicateSelection(nodes, edges, ['solo']);
     expect(duplicatedNodes).toHaveLength(1);
     expect(duplicatedEdges).toHaveLength(0);
   });
 
   it('skips edges pointing to non-existent selections', () => {
-    const nodes: Node[] = [];
-    const edges: Edge[] = [createEdge('ghost', 'ghost', 'ghost')];
+    const nodes: FlowNode[] = [];
+    const edges: FlowEdge[] = [createEdge('ghost', 'ghost', 'ghost')];
     const { duplicatedNodes, duplicatedEdges } = duplicateSelection(nodes, edges, ['ghost']);
     expect(duplicatedNodes).toHaveLength(0);
     expect(duplicatedEdges).toHaveLength(0);
   });
 
   it('defaults duplicate positions when original coordinates missing', () => {
-    const nodes: Node[] = [
+    const nodes: FlowNode[] = [
       createNode('floating', {
         // force undefined coordinates to exercise fallback branches
         position: { x: undefined as unknown as number, y: undefined as unknown as number }
