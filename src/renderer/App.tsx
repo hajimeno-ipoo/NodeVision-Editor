@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { NodeVisionProject } from '../shared/project-types';
-import { NodeGraphCanvas } from './components/NodeGraphCanvas';
-import { PreviewPanel, type PreviewData } from './components/PreviewPanel';
-import { cloneProject, stripAutosaveMetadata } from './utils/autosave';
+import type { EdgeDefinition, NodeDefinition, NodeVisionProject } from '../shared/project-types.js';
+import { NodeGraphCanvas } from './components/NodeGraphCanvas.js';
+import { PreviewPanel, type PreviewData } from './components/PreviewPanel.js';
+import { cloneProject, stripAutosaveMetadata } from './utils/autosave.js';
+import { computeProjectPreviewHash } from './utils/preview-hash.js';
 
 const HISTORY_LIMIT = 50;
 const AUTOSAVE_DELAY_MS = 5000;
@@ -752,17 +753,7 @@ export default function App() {
     [previewProxyMode]
   );
 
-  const hashProject = useCallback((project: NodeVisionProject | null) => {
-    if (!project) {
-      return 'null';
-    }
-    return JSON.stringify({
-      nodes: project.nodes?.map((node) => ({ id: node.id, type: node.type })) ?? [],
-      edges: project.edges?.map((edge) => ({ from: edge.from, to: edge.to })) ?? [],
-      fps: project.projectFps,
-      assets: project.assets?.map((asset) => asset.id) ?? []
-    });
-  }, []);
+  const hashProject = useCallback((project: NodeVisionProject | null) => computeProjectPreviewHash(project), []);
 
   const lastRequestedProjectHashRef = useRef<string | null>(null);
   const pendingProjectHashRef = useRef<string | null>(null);
