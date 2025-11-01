@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, List, Literal, Optional, NamedTuple
 from base64 import b64encode
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from io import BytesIO
 
 import math
@@ -172,6 +173,14 @@ def parse_float(value: Any) -> float | None:
   except (TypeError, ValueError):
     return None
   if not math.isfinite(result):
+    return None
+  return result
+
+
+def parse_int(value: Any) -> int | None:
+  try:
+    result = int(value)
+  except (TypeError, ValueError):
     return None
   return result
 
@@ -374,6 +383,17 @@ def build_image_from_graph(project: ProjectPayload) -> Image.Image:
         return target.split(":", 1)[0]
     return None
 
+  def resolve_named_input(node: ProjectNode, key: str) -> str | None:
+    inputs = node.inputs or {}
+    target = inputs.get(key)
+    if isinstance(target, str):
+      return target.split(":", 1)[0]
+    return None
+
+  def resolve_input_image(node: ProjectNode, key: str) -> Image.Image | None:
+    target_id = resolve_named_input(node, key)
+    return resolve_node(target_id) if target_id else None
+
   def resolve_node(node_id: str) -> Image.Image | None:
     if node_id in image_cache:
       return image_cache[node_id]
@@ -402,6 +422,80 @@ def build_image_from_graph(project: ProjectPayload) -> Image.Image:
           saturation_value = parse_float(params.get("saturation"))
           saturation = max(min(saturation_value if saturation_value is not None else 1.0, 4.0), 0.0)
           base_image = ImageEnhance.Color(base_image).enhance(saturation)
+    elif node.type == "Resize":
+      parent = resolve_single_input(node)
+      parent_image = resolve_node(parent) if parent else None
+      if parent_image is not None:
+        params = node.params or {}
+        original_width, original_height = parent_image.size
+        keep_aspect = bool(params.get("keepAspectRatio", True))
+        scale_value = parse_float(params.get("scale"))
+        width_value = parse_int(params.get("width"))
+        height_value = parse_int(params.get("height"))
+
+        target_width = original_width
+        target_height = original_height
+
+        if scale_value is not None and scale_value > 0:
+          target_width = max(int(round(original_width * scale_value)), 1)
+          target_height = max(int(round(original_height * scale_value)), 1)
+        else:
+          if width_value is not None and width_value > 0:
+            target_width = width_value
+          if height_value is not None and height_value > 0:
+            target_height = height_value
+
+          if keep_aspect:
+            if width_value is None and height_value is not None and height_value > 0:
+              target_width = max(int(round(original_width * (target_height / original_height))), 1)
+            elif height_value is None and width_value is not None and width_value > 0:
+              target_height = max(int(round(original_height * (target_width / original_width))), 1)
+            elif width_value is not None and height_value is not None and width_value > 0 and height_value > 0:
+              ratio_w = width_value / original_width
+              ratio_h = height_value / original_height
+              if ratio_w < ratio_h:
+                target_height = max(int(round(original_height * ratio_w)), 1)
+                target_width = max(width_value, 1)
+              else:
+                target_width = max(int(round(original_width * ratio_h)), 1)
+                target_height = max(height_value, 1)
+
+        target_width = max(target_width, 1)
+        target_height = max(target_height, 1)
+        base_image = parent_image.resize((target_width, target_height), RESAMPLE_LANCZOS)
+    elif node.type == "Crop":
+      parent = resolve_single_input(node)
+      parent_image = resolve_node(parent) if parent else None
+      if parent_image is not None:
+        params = node.params or {}
+        origin_x = max(parse_int(params.get("x")) or 0, 0)
+        origin_y = max(parse_int(params.get("y")) or 0, 0)
+        width_value = parse_int(params.get("width")) or parent_image.width
+        height_value = parse_int(params.get("height")) or parent_image.height
+        width_value = max(width_value, 1)
+        height_value = max(height_value, 1)
+        right = min(origin_x + width_value, parent_image.width)
+        bottom = min(origin_y + height_value, parent_image.height)
+        origin_x = min(origin_x, parent_image.width - 1)
+        origin_y = min(origin_y, parent_image.height - 1)
+        if right <= origin_x or bottom <= origin_y:
+          base_image = parent_image.copy()
+        else:
+          base_image = parent_image.crop((origin_x, origin_y, right, bottom))
+    elif node.type == "Blend":
+      primary_image = resolve_input_image(node, "primary")
+      secondary_image = resolve_input_image(node, "secondary")
+      if primary_image is None:
+        fallback_parent = resolve_single_input(node)
+        primary_image = resolve_node(fallback_parent) if fallback_parent else None
+      if primary_image is not None and secondary_image is not None:
+        params = node.params or {}
+        alpha_value = parse_float(params.get("alpha"))
+        alpha = alpha_value if alpha_value is not None else 0.5
+        alpha = min(max(alpha, 0.0), 1.0)
+        if secondary_image.size != primary_image.size:
+          secondary_image = secondary_image.resize(primary_image.size, RESAMPLE_LANCZOS)
+        base_image = Image.blend(primary_image.convert("RGB"), secondary_image.convert("RGB"), alpha)
     elif node.type == "PreviewDisplay":
       parent = resolve_single_input(node)
       parent_image = resolve_node(parent) if parent else None
@@ -463,13 +557,20 @@ def overlay_preview_metadata(
     f"Proxy: {'ON' if proxy_decision.enabled else 'OFF'} ({proxy_scale_label})",
     f"Reason: {proxy_reason}",
   ]
+  pipeline_summary = ", ".join(node.type for node in project.nodes[:6])
+  if len(project.nodes) > 6:
+    pipeline_summary += ", …"
+  info_lines.append(f"Nodes: {len(project.nodes)}")
+  if pipeline_summary:
+    info_lines.append(f"Pipeline: {pipeline_summary}")
   if target_delay_label:
     info_lines.append(target_delay_label)
   if avg_delay_label:
     info_lines.append(avg_delay_label)
+  tokyo_now = datetime.now(ZoneInfo("Asia/Tokyo"))
   info_lines.extend([
     f"FPS: {fps}",
-    datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ"),
+    tokyo_now.strftime("%Y-%m-%d %H:%M:%S%z"),
   ])
   line_height = 18
   padding = 12
@@ -550,6 +651,58 @@ NODE_CATALOG: list[NodeCatalogItem] = [
       "video": None,
     },
     defaultOutputs=["video"],
+  ),
+  NodeCatalogItem(
+    nodeId="Resize",
+    displayName="Resize",
+    description="画像サイズを指定した幅・高さまたは倍率でリサイズします。",
+    category="Transform",
+    inputs=["image"],
+    outputs=["image"],
+    defaultParams={
+      "width": 1280,
+      "height": 720,
+      "keepAspectRatio": True,
+      "scale": None,
+    },
+    defaultInputs={
+      "image": None,
+    },
+    defaultOutputs=["image"],
+  ),
+  NodeCatalogItem(
+    nodeId="Crop",
+    displayName="Crop",
+    description="開始座標とサイズを指定して画像をトリミングします。",
+    category="Transform",
+    inputs=["image"],
+    outputs=["image"],
+    defaultParams={
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 360,
+    },
+    defaultInputs={
+      "image": None,
+    },
+    defaultOutputs=["image"],
+  ),
+  NodeCatalogItem(
+    nodeId="Blend",
+    displayName="Blend",
+    description="2 つの画像をアルファ値でブレンドします。",
+    category="Compositing",
+    inputs=["primary", "secondary"],
+    outputs=["image"],
+    defaultParams={
+      "alpha": 0.5,
+    },
+    defaultInputs={
+      "primary": None,
+      "secondary": None,
+    },
+    defaultOutputs=["image"],
   ),
   NodeCatalogItem(
     nodeId="PreviewDisplay",
@@ -646,7 +799,7 @@ async def post_preview_generate(request: PreviewGenerateRequest) -> PreviewRespo
       averageDelayMs=proxy_decision.average_delay_ms,
       targetDelayMs=proxy_decision.target_delay_ms,
     ),
-    generatedAt=datetime.utcnow().isoformat() + "Z",
+    generatedAt=datetime.now(ZoneInfo("Asia/Tokyo")).isoformat(),
   )
 
 
