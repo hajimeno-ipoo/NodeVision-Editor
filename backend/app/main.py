@@ -42,6 +42,8 @@ class NodeCatalogItem(BaseModel):
   category: str
   inputs: list[str] = Field(default_factory=list)
   outputs: list[str] = Field(default_factory=list)
+  defaultParams: dict[str, Any] = Field(default_factory=dict)
+  defaultInputs: dict[str, Optional[str]] = Field(default_factory=dict)
 
 
 class ProjectSummary(BaseModel):
@@ -494,6 +496,11 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     category="IO",
     inputs=[],
     outputs=["video", "audio"],
+    defaultParams={
+      "path": "Assets/clip01.mp4",
+      "placeholderWidth": 1920,
+      "placeholderHeight": 1080,
+    },
   ),
   NodeCatalogItem(
     nodeId="ExposureAdjust",
@@ -501,6 +508,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     category="Color",
     inputs=["video"],
     outputs=["video"],
+    defaultParams={
+      "exposure": 0.0,
+    },
+    defaultInputs={
+      "video": None,
+    },
   ),
   NodeCatalogItem(
     nodeId="ContrastAdjust",
@@ -508,6 +521,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     category="Color",
     inputs=["video"],
     outputs=["video"],
+    defaultParams={
+      "contrast": 1.0,
+    },
+    defaultInputs={
+      "video": None,
+    },
   ),
   NodeCatalogItem(
     nodeId="SaturationAdjust",
@@ -515,6 +534,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     category="Color",
     inputs=["video"],
     outputs=["video"],
+    defaultParams={
+      "saturation": 1.0,
+    },
+    defaultInputs={
+      "video": None,
+    },
   ),
   NodeCatalogItem(
     nodeId="PreviewDisplay",
@@ -522,6 +547,11 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     category="Monitoring",
     inputs=["primary", "secondary"],
     outputs=[],
+    defaultParams={},
+    defaultInputs={
+      "primary": None,
+      "secondary": None,
+    },
   ),
 ]
 

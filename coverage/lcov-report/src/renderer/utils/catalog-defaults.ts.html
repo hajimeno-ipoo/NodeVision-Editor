@@ -3,7 +3,7 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for src/renderer/utils/preview-change.ts</title>
+    <title>Code coverage report for src/renderer/utils/catalog-defaults.ts</title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="../../../prettify.css" />
     <link rel="stylesheet" href="../../../base.css" />
@@ -19,20 +19,20 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/renderer/utils</a> preview-change.ts</h1>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/renderer/utils</a> catalog-defaults.ts</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">96.29% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>18/18</span>
+                <span class='fraction'>26/27</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">71.42% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>2/2</span>
+                <span class='fraction'>5/7</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">96.29% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>18/18</span>
+                <span class='fraction'>26/27</span>
             </div>
         
             
@@ -81,7 +81,16 @@
 <a name='L16'></a><a href='#L16'>16</a>
 <a name='L17'></a><a href='#L17'>17</a>
 <a name='L18'></a><a href='#L18'>18</a>
-<a name='L19'></a><a href='#L19'>19</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -90,32 +99,50 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { NodeVisionProject } from '../../shared/project-types.js';
-import { computeProjectPreviewHash } from './preview-hash.js';
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">type CatalogDefaultsSource = {
+  defaultParams?: Record&lt;string, unknown&gt;;
+  defaultInputs?: Record&lt;string, string | null&gt;;
+};
 &nbsp;
-export interface PreviewChangeResult {
-  changed: boolean;
-  hash: string;
+export interface CatalogDefaultsResult {
+  params: Record&lt;string, unknown&gt;;
+  inputs: Record&lt;string, unknown&gt;;
 }
 &nbsp;
-export function detectPreviewChange(
-  previousHash: string | null,
-  project: NodeVisionProject | null
-): PreviewChangeResult {
-  const nextHash = computeProjectPreviewHash(project);
-  return {
-    changed: (previousHash ?? 'null') !== nextHash,
-    hash: nextHash
-  };
+export function extractCatalogDefaults(source: CatalogDefaultsSource | undefined): CatalogDefaultsResult {
+  if (!source) {
+    return { params: {}, inputs: {} };
+  }
+&nbsp;
+  const params =
+    source.defaultParams &amp;&amp; Object.keys(source.defaultParams).length &gt; 0
+      ? { ...source.defaultParams <span class="branch-0 cbranch-no" title="branch not covered" >}</span>
+<span class="cstat-no" title="statement not covered" >      : {};</span>
+&nbsp;
+  const inputs: Record&lt;string, unknown&gt; = {};
+  for (const [key, value] of Object.entries(source.<span class="branch-0 cbranch-no" title="branch not covered" >defaultInputs ?? {})</span>) {
+    inputs[key] = value ?? null;
+  }
+&nbsp;
+  return { params, inputs };
 }
 &nbsp;</pre></td></tr></table></pre>
 

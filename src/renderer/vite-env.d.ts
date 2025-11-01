@@ -26,6 +26,8 @@ declare global {
     category: string;
     inputs: string[];
     outputs: string[];
+    defaultParams: Record<string, unknown>;
+    defaultInputs: Record<string, string | null>;
   }
 
   interface BackendSaveResponse {

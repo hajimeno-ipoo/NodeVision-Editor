@@ -77,6 +77,18 @@ class ProjectLoadEndpointTests(unittest.TestCase):
     self.assertEqual(loaded["slot"], sanitized_slot)
     self.assertTrue(loaded["path"].endswith(f"{sanitized_slot}.nveproj"))
 
+  @unittest.skipUnless(FASTAPI_AVAILABLE, "FastAPI dependency is not installed")
+  def test_node_catalog_provides_defaults(self) -> None:
+    response = self.client.get("/nodes/catalog")
+    self.assertEqual(response.status_code, 200)
+    catalog = response.json()
+    media_input = next(item for item in catalog if item["nodeId"] == "MediaInput")
+    exposure = next(item for item in catalog if item["nodeId"] == "ExposureAdjust")
+    self.assertEqual(media_input["defaultParams"]["path"], "Assets/clip01.mp4")
+    self.assertIn("placeholderWidth", media_input["defaultParams"])
+    self.assertEqual(exposure["defaultParams"]["exposure"], 0.0)
+    self.assertIn("video", exposure["defaultInputs"])
+
 
 if __name__ == "__main__":
   unittest.main()

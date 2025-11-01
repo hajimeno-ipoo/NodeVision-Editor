@@ -4,6 +4,7 @@ import { NodeGraphCanvas } from './components/NodeGraphCanvas.js';
 import { PreviewPanel, type PreviewData } from './components/PreviewPanel.js';
 import { cloneProject, stripAutosaveMetadata } from './utils/autosave.js';
 import { detectPreviewChange } from './utils/preview-change.js';
+import { extractCatalogDefaults } from './utils/catalog-defaults.js';
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 
@@ -1174,12 +1175,14 @@ export default function App() {
         newId = `${newIdBase}-${counter}`;
       }
 
+      const { params: defaultParams, inputs: defaultInputs } = extractCatalogDefaults(item);
+
       const nextNode = {
         id: newId,
         type: item.nodeId,
         displayName: item.displayName,
-        params: {},
-        inputs: {},
+        params: defaultParams,
+        inputs: defaultInputs,
         outputs: item.outputs,
         cachePolicy: 'auto' as const,
         position: {
@@ -1199,7 +1202,7 @@ export default function App() {
       setNodeEditorState({
         nodeId: newId,
         displayName: item.displayName ?? '',
-        paramsText: JSON.stringify({}, null, 2),
+        paramsText: JSON.stringify(defaultParams, null, 2),
         error: null,
         dirty: false
       });
