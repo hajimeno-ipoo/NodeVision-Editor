@@ -385,6 +385,12 @@ class ImageResizeNode(BaseNode):
 
 > 各フェーズのチェックリストは `tasks/mvp_phase_tasks.md` の「共通タスク」「M1〜M3 セクション」と同期させ、進捗を二重管理しないようにする。
 
+### 7.3 進行状況（2025-11-01 更新）
+
+- **Phase 2**: ノードカタログ API を拡張し、`description` / `defaultParams` / `defaultInputs` / `defaultOutputs` を提供。Resize / Crop / Blend の静止画処理ノードを追加し、Pillow ベースのプレビュー生成を確認済み。
+- **Phase 3（着手中）**: 画像処理ノードを介したプレビュー HUD の改善（ノード数・パイプライン概要表示）、並びにフロントのノード追加フロー改善を完了。保存→再読込の回帰テストを追加。
+- **開発環境**: direnv を導入し `.envrc` を整備。プロジェクトに入るだけで `.venv` が自動アクティベートされる運用に移行。
+
 ---
 
 ## 8. AIドリブンコーディング戦略
