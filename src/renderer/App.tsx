@@ -3,7 +3,7 @@ import type { NodeVisionProject } from '../shared/project-types.js';
 import { NodeGraphCanvas } from './components/NodeGraphCanvas.js';
 import { PreviewPanel, type PreviewData } from './components/PreviewPanel.js';
 import { cloneProject, stripAutosaveMetadata } from './utils/autosave.js';
-import { computeProjectPreviewHash } from './utils/preview-hash.js';
+import { detectPreviewChange } from './utils/preview-change.js';
 
 type TimerHandle = ReturnType<typeof setTimeout>;
 
@@ -756,8 +756,6 @@ export default function App() {
     [previewProxyMode]
   );
 
-  const hashProject = useCallback((project: NodeVisionProject | null) => computeProjectPreviewHash(project), []);
-
   const lastRequestedProjectHashRef = useRef<string | null>(null);
   const pendingProjectHashRef = useRef<string | null>(null);
 
@@ -769,19 +767,21 @@ export default function App() {
       return;
     }
     const project = pendingPreviewProjectRef.current;
-    const hash = pendingProjectHashRef.current ?? hashProject(project);
+    const hash =
+      pendingProjectHashRef.current ??
+      detectPreviewChange(lastRequestedProjectHashRef.current, project).hash;
     pendingPreviewProjectRef.current = null;
     pendingProjectHashRef.current = null;
     lastRequestedProjectHashRef.current = hash;
     const nextId = previewRequestRef.current + 1;
     previewRequestRef.current = nextId;
     void requestPreview(project, nextId);
-  }, [hashProject, requestPreview]);
+  }, [requestPreview]);
 
   const schedulePreview = useCallback(
     (project: NodeVisionProject | null) => {
-      const hash = hashProject(project);
-      if (hash === lastRequestedProjectHashRef.current) {
+      const { changed, hash } = detectPreviewChange(lastRequestedProjectHashRef.current, project);
+      if (!changed) {
         return;
       }
       pendingPreviewProjectRef.current = project;
@@ -791,7 +791,7 @@ export default function App() {
       }
       dispatchPendingPreview();
     },
-    [dispatchPendingPreview, hashProject]
+    [dispatchPendingPreview]
   );
 
   useEffect(() => {
