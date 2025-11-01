@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { EdgeDefinition, NodeDefinition, NodeVisionProject } from '../shared/project-types.js';
+import type { NodeVisionProject } from '../shared/project-types.js';
 import { NodeGraphCanvas } from './components/NodeGraphCanvas.js';
 import { PreviewPanel, type PreviewData } from './components/PreviewPanel.js';
 import { cloneProject, stripAutosaveMetadata } from './utils/autosave.js';
 import { computeProjectPreviewHash } from './utils/preview-hash.js';
+
+type TimerHandle = ReturnType<typeof setTimeout>;
 
 const HISTORY_LIMIT = 50;
 const AUTOSAVE_DELAY_MS = 5000;
@@ -108,7 +110,7 @@ export default function App() {
   const [backendRecoveryTrigger, setBackendRecoveryTrigger] = useState(0);
   const [backendRecoveryAttemptCount, setBackendRecoveryAttemptCount] = useState(0);
   const [backendRecoveryLastAttemptAt, setBackendRecoveryLastAttemptAt] = useState<string | null>(null);
-  const backendRecoveryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const backendRecoveryTimerRef = useRef<TimerHandle | null>(null);
   const backendRecoverySlotRef = useRef<string | null>(null);
   const [nodeEditorState, setNodeEditorState] = useState<NodeEditorState>({
     nodeId: null,
@@ -132,7 +134,7 @@ export default function App() {
   const [previewProxyMode, setPreviewProxyMode] = useState<'auto' | 'on' | 'off'>('auto');
   const [toast, setToast] = useState<AppToast | null>(null);
   const hasPendingChangesRef = useRef(false);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimerRef = useRef<TimerHandle | null>(null);
   const clearAutoSaveTimer = useCallback(() => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -141,7 +143,7 @@ export default function App() {
   }, []);
   const previewRequestRef = useRef(0);
   const previewMetricsRef = useRef<{ start: number; profile: string } | null>(null);
-  const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const toastTimerRef = useRef<TimerHandle | null>(null);
   const pendingPreviewProjectRef = useRef<NodeVisionProject | null>(null);
   const isPreviewInFlightRef = useRef(false);
   const clearToastTimer = useCallback(() => {
@@ -166,6 +168,7 @@ export default function App() {
     () => formatTimestamp(backendRecoveryLastAttemptAt),
     [backendRecoveryLastAttemptAt]
   );
+  const isBackendRecoveryPending = backendRecoveryStatus === 'pending';
   const scheduleBackendRecovery = useCallback(
     (options?: { resetAttempts?: boolean; delayMs?: number }) => {
       if (backendRecoveryTimerRef.current) {
@@ -1226,8 +1229,12 @@ export default function App() {
     const sanitizedNodes = nodesToKeep.map((node) => {
       const inputs = { ...node.inputs };
       for (const key of Object.keys(inputs)) {
-        const [sourceNode] = inputs[key]?.split(':') ?? [];
-        if (selectedNodes.includes(sourceNode ?? '')) {
+        const currentValue = inputs[key];
+        if (typeof currentValue !== 'string') {
+          continue;
+        }
+        const [sourceNode] = currentValue.split(':');
+        if (sourceNode && selectedNodes.includes(sourceNode)) {
           delete inputs[key];
         }
       }
@@ -1655,7 +1662,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={handleRetryBackendRecovery}
-                    disabled={backendRecoveryStatus === 'pending'}
+                    disabled={isBackendRecoveryPending}
                   >
                     再試行
                   </button>
