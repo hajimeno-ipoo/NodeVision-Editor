@@ -86,8 +86,12 @@ class ProjectLoadEndpointTests(unittest.TestCase):
     exposure = next(item for item in catalog if item["nodeId"] == "ExposureAdjust")
     self.assertEqual(media_input["defaultParams"]["path"], "Assets/clip01.mp4")
     self.assertIn("placeholderWidth", media_input["defaultParams"])
+    self.assertTrue(media_input["description"])
+    self.assertEqual(media_input["defaultOutputs"], ["video", "audio"])
     self.assertEqual(exposure["defaultParams"]["exposure"], 0.0)
     self.assertIn("video", exposure["defaultInputs"])
+    self.assertEqual(exposure["defaultOutputs"], ["video"])
+    self.assertIn("露出", exposure["description"])
 
 
 if __name__ == "__main__":

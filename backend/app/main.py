@@ -39,11 +39,13 @@ class InfoResponse(BaseModel):
 class NodeCatalogItem(BaseModel):
   nodeId: str
   displayName: str
+  description: str
   category: str
   inputs: list[str] = Field(default_factory=list)
   outputs: list[str] = Field(default_factory=list)
   defaultParams: dict[str, Any] = Field(default_factory=dict)
   defaultInputs: dict[str, Optional[str]] = Field(default_factory=dict)
+  defaultOutputs: list[str] = Field(default_factory=list)
 
 
 class ProjectSummary(BaseModel):
@@ -493,6 +495,7 @@ NODE_CATALOG: list[NodeCatalogItem] = [
   NodeCatalogItem(
     nodeId="MediaInput",
     displayName="Media Input",
+    description="ローカルメディアやプレースホルダー画像を読み込む入力ノード。",
     category="IO",
     inputs=[],
     outputs=["video", "audio"],
@@ -501,10 +504,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
       "placeholderWidth": 1920,
       "placeholderHeight": 1080,
     },
+    defaultOutputs=["video", "audio"],
   ),
   NodeCatalogItem(
     nodeId="ExposureAdjust",
     displayName="Exposure Adjust",
+    description="露出（EV）を補正して映像の明るさを調整します。",
     category="Color",
     inputs=["video"],
     outputs=["video"],
@@ -514,10 +519,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     defaultInputs={
       "video": None,
     },
+    defaultOutputs=["video"],
   ),
   NodeCatalogItem(
     nodeId="ContrastAdjust",
     displayName="Contrast Adjust",
+    description="コントラスト係数で映像のメリハリを強調します。",
     category="Color",
     inputs=["video"],
     outputs=["video"],
@@ -527,10 +534,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     defaultInputs={
       "video": None,
     },
+    defaultOutputs=["video"],
   ),
   NodeCatalogItem(
     nodeId="SaturationAdjust",
     displayName="Saturation Adjust",
+    description="彩度を変更して色味の鮮やかさを制御します。",
     category="Color",
     inputs=["video"],
     outputs=["video"],
@@ -540,10 +549,12 @@ NODE_CATALOG: list[NodeCatalogItem] = [
     defaultInputs={
       "video": None,
     },
+    defaultOutputs=["video"],
   ),
   NodeCatalogItem(
     nodeId="PreviewDisplay",
     displayName="Preview Display",
+    description="プレビュー用 HUD に映像を表示する終端ノード。",
     category="Monitoring",
     inputs=["primary", "secondary"],
     outputs=[],
@@ -552,6 +563,7 @@ NODE_CATALOG: list[NodeCatalogItem] = [
       "primary": None,
       "secondary": None,
     },
+    defaultOutputs=[],
   ),
 ]
 

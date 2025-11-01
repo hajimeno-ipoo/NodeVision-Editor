@@ -23,11 +23,13 @@ declare global {
   interface NodeCatalogItem {
     nodeId: string;
     displayName: string;
+    description: string;
     category: string;
     inputs: string[];
     outputs: string[];
     defaultParams: Record<string, unknown>;
     defaultInputs: Record<string, string | null>;
+    defaultOutputs: string[];
   }
 
   interface BackendSaveResponse {

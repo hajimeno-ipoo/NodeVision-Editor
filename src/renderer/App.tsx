@@ -1176,6 +1176,8 @@ export default function App() {
       }
 
       const { params: defaultParams, inputs: defaultInputs } = extractCatalogDefaults(item);
+      const defaultOutputs =
+        item.defaultOutputs && item.defaultOutputs.length > 0 ? [...item.defaultOutputs] : [...item.outputs];
 
       const nextNode = {
         id: newId,
@@ -1183,7 +1185,7 @@ export default function App() {
         displayName: item.displayName,
         params: defaultParams,
         inputs: defaultInputs,
-        outputs: item.outputs,
+        outputs: defaultOutputs,
         cachePolicy: 'auto' as const,
         position: {
           x: 120 * (projectData.nodes.length % 5),
@@ -1839,16 +1841,26 @@ export default function App() {
           <div className="project-catalog">
             <h3>バックエンド ノードカタログ</h3>
             <ul>
-              {nodeCatalog.map((item) => (
-                <li key={item.nodeId}>
-                  <strong>{item.displayName}</strong> <span>({item.category})</span> — 入力:
-                  {item.inputs.length ? item.inputs.join(', ') : 'なし'} / 出力:
-                  {item.outputs.length ? item.outputs.join(', ') : 'なし'}{' '}
-                  <button type="button" onClick={() => handleAddNodeFromCatalog(item)}>
-                    追加
-                  </button>
-                </li>
-              ))}
+              {nodeCatalog.map((item) => {
+                const recommendedOutputs =
+                  item.defaultOutputs && item.defaultOutputs.length > 0 ? item.defaultOutputs : item.outputs;
+                return (
+                  <li key={item.nodeId}>
+                    <strong>{item.displayName}</strong> <span>({item.category})</span>
+                    <p className="project-catalog__description">{item.description}</p>
+                    <p className="project-catalog__io">
+                      <span>入力: {item.inputs.length ? item.inputs.join(', ') : 'なし'}</span>{' '}
+                      <span>
+                        出力:
+                        {recommendedOutputs.length ? recommendedOutputs.join(', ') : 'なし'}
+                      </span>
+                    </p>
+                    <button type="button" onClick={() => handleAddNodeFromCatalog(item)}>
+                      追加
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ) : null}

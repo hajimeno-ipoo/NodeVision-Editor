@@ -5,7 +5,7 @@ type CatalogDefaultsSource = {
 
 export interface CatalogDefaultsResult {
   params: Record<string, unknown>;
-  inputs: Record<string, unknown>;
+  inputs: Record<string, import('../../shared/project-types.js').NodeInputValue>;
 }
 
 export function extractCatalogDefaults(source: CatalogDefaultsSource | undefined): CatalogDefaultsResult {
@@ -18,7 +18,7 @@ export function extractCatalogDefaults(source: CatalogDefaultsSource | undefined
       ? { ...source.defaultParams }
       : {};
 
-  const inputs: Record<string, unknown> = {};
+  const inputs: Record<string, import('../../shared/project-types.js').NodeInputValue> = {};
   for (const [key, value] of Object.entries(source.defaultInputs ?? {})) {
     inputs[key] = value ?? null;
   }
