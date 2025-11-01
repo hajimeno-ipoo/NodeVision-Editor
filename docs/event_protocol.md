@@ -23,6 +23,16 @@
 | POST | `/api/v1/graph/cancel` | 実行中断 | `{ "executionId": "exec-123", "nodeId": "n5" }` | `{ "status": "accepted" }` |
 | GET | `/api/v1/assets` | アセット一覧取得 | `-` | `{ "items": [ { "id": "a1", "path": "Assets/clip01.mp4" } ] }` |
 
+### 2.1 ノードカタログ API 更新（2025-11-01）
+
+- エンドポイント: `GET /nodes/catalog`
+- 追加フィールド:
+  - `description` — ノードの概要テキスト（UI でツールチップ表示に利用）
+  - `defaultParams` — 推奨パラメータ辞書
+  - `defaultInputs` — 初期接続先を示すハンドルマップ（未接続の場合は `null`）
+  - `defaultOutputs` — ノードが生成する代表的な出力ハンドル
+- 追加ノード: `Resize`, `Crop`, `Blend`（いずれも静止画処理用。`MediaInput` から受け取った画像を Pillow で加工し `PreviewDisplay` へ渡す）
+
 ## 3. エラーコード詳細
 
 | コード | 種別 | 説明 | 対応策 |

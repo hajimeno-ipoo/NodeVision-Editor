@@ -1870,9 +1870,9 @@ export default function App() {
       <section className="app-shell__section">
         <h2>次のステップ</h2>
         <ul>
-          <li>FastAPI バックエンドとの API トンネル整備</li>
-          <li>ノードグラフ UI / ReactFlow の統合</li>
-          <li>プロジェクトファイル入出力（`project-io`）の接続</li>
+          <li>プレビュー再生成トリガーの網羅確認（ノード編集・自動保存・復旧）</li>
+          <li>画像処理ノードを含むサンプルプロジェクトの保存/再読込テスト自動化</li>
+          <li>ベンチログ再集計スクリプトで新パイプラインの指標を反映</li>
         </ul>
       </section>
     </main>
